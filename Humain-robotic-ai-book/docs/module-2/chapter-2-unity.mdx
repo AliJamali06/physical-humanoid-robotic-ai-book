@@ -1,0 +1,574 @@
+---
+title: "Chapter 2: Unity Rendering and ROS 2 Integration"
+sidebar_position: 3
+description: Learn Unity for photorealistic robot visualization, ROS 2 integration with Unity Robotics Hub, and AR/VR applications for humanoid robots
+keywords: [unity, ros2, visualization, rendering, robotics, unity robotics hub, photorealistic, vr, ar]
+---
+
+# Chapter 2: Unity Rendering and ROS 2 Integration
+
+## Learning Objectives
+
+By the end of this chapter, you will be able to:
+
+- **Explain** why Unity is used alongside Gazebo for robot visualization
+- **Set up** Unity with ROS 2 using Unity Robotics Hub
+- **Import** URDF models into Unity with Articulation Body physics
+- **Visualize** ROS 2 topics (transforms, images, point clouds) in Unity
+- **Create** photorealistic scenes with lighting, materials, and post-processing
+- **Understand** Unity's role in AR/VR applications for robotics
+
+**Estimated Time**: 75-90 minutes
+
+---
+
+## Prerequisites
+
+- **Module 1**: ROS 2 fundamentals and URDF
+- **Chapter 1**: Gazebo basics (understanding of simulation workflow)
+- **Unity**: Install Unity Hub and Unity Editor (2021.3 LTS or newer)
+- **C# Basics**: Understanding classes and methods (for Unity scripting)
+
+---
+
+## Why Unity for Robotics?
+
+**Gazebo vs Unity**:
+
+| Feature | **Gazebo** | **Unity** |
+|---------|------------|-----------|
+| **Physics** | High-fidelity (ODE, Bullet) | Good (PhysX, Articulation Body) |
+| **Rendering** | Basic (OGRE) | Photorealistic (HDRP, URP) |
+| **Sensors** | LiDAR, depth, IMU | Camera, depth, synthetic data |
+| **VR/AR** | Limited | Native support (OpenXR, ARCore) |
+| **ML Training** | Limited | Unity ML-Agents (RL) |
+| **Use Case** | Physics simulation | Visualization, synthetic data, training |
+
+**When to Use Unity**:
+- ✅ Photorealistic rendering for demos and presentations
+- ✅ Synthetic data generation for computer vision (training datasets)
+- ✅ AR/VR applications (teleoperation, remote monitoring)
+- ✅ Reinforcement learning with Unity ML-Agents
+- ✅ Human-robot interaction visualization
+
+**When to Use Gazebo**:
+- ✅ High-fidelity physics (contact dynamics, friction)
+- ✅ Traditional robotics simulation
+- ✅ Standardized sensors (LiDAR, IMU)
+
+**Best Practice**: Use both
+- Gazebo for physics and control development
+- Unity for visualization and user interfaces
+
+---
+
+## Unity Robotics Hub Overview
+
+**Unity Robotics Hub** provides ROS 2 integration:
+
+```
+┌──────────────────────────────────┐
+│         Unity Editor             │
+│                                  │
+│  ┌────────────────────────────┐  │
+│  │   URDF Importer            │  │
+│  │   (Parses URDF → Unity)    │  │
+│  └────────────────────────────┘  │
+│                                  │
+│  ┌────────────────────────────┐  │
+│  │  ROS-TCP-Connector         │  │
+│  │  (Unity ↔ ROS 2)           │  │
+│  └────────────────────────────┘  │
+└──────────────────────────────────┘
+            ▲         ▼
+            TCP Socket
+┌──────────────────────────────────┐
+│     ROS-TCP-Endpoint (ROS 2)     │
+│  (Python node forwarding msgs)   │
+└──────────────────────────────────┘
+            ▲         ▼
+┌──────────────────────────────────┐
+│       ROS 2 Ecosystem            │
+│  (Gazebo, Nav2, Controllers)     │
+└──────────────────────────────────┘
+```
+
+**Components**:
+1. **URDF Importer**: Converts URDF to Unity GameObjects
+2. **ROS-TCP-Connector**: Unity package for ROS 2 communication
+3. **ROS-TCP-Endpoint**: Python node that bridges ROS 2 topics/services to Unity
+
+---
+
+## Setting Up Unity for ROS 2
+
+### Step 1: Install Unity
+
+1. Download **Unity Hub**: https://unity.com/download
+2. Install **Unity Editor 2021.3 LTS** (or newer)
+3. Create a new 3D project (URP or HDRP for better graphics)
+
+### Step 2: Install Unity Robotics Hub
+
+**In Unity Editor**:
+
+1. Open **Window → Package Manager**
+2. Click **+ → Add package from git URL**
+3. Add these packages:
+   - `https://github.com/Unity-Technologies/ROS-TCP-Connector.git?path=/com.unity.robotics.ros-tcp-connector`
+   - `https://github.com/Unity-Technologies/URDF-Importer.git?path=/com.unity.robotics.urdf-importer`
+
+### Step 3: Install ROS-TCP-Endpoint (ROS 2 Side)
+
+```bash
+# Create ROS 2 workspace
+mkdir -p ~/ros2_unity_ws/src
+cd ~/ros2_unity_ws/src
+
+# Clone ROS-TCP-Endpoint
+git clone https://github.com/Unity-Technologies/ROS-TCP-Endpoint.git
+
+# Build
+cd ~/ros2_unity_ws
+colcon build
+source install/setup.bash
+```
+
+### Step 4: Configure Connection
+
+**In Unity** (Robotics → ROS Settings):
+- ROS IP Address: `127.0.0.1` (localhost)
+- ROS Port: `10000`
+- Protocol: `ROS 2`
+
+**Launch ROS-TCP-Endpoint**:
+```bash
+source ~/ros2_unity_ws/install/setup.bash
+ros2 run ros_tcp_endpoint default_server_endpoint --ros-args -p ROS_IP:=0.0.0.0
+```
+
+**Test Connection**:
+- In Unity, go to **Robotics → ROS Settings**
+- Click **"Test Connection"** (should show "Connected")
+
+---
+
+## Importing URDF into Unity
+
+### Method 1: Using URDF Importer GUI
+
+1. In Unity, go to **Assets → Import Robot from URDF**
+2. Browse to your `simple_humanoid.urdf` file
+3. Select **Import Settings**:
+   - **Axis Type**: Z-Axis (ROS convention)
+   - **Mesh Decomposer**: VHACD (for collisions)
+   - **Articulation Body**: Checked (for physics)
+4. Click **Import**
+
+**Result**: Unity creates a GameObject hierarchy matching URDF links/joints.
+
+### Method 2: Programmatic Import
+
+Create a C# script `URDFImporter.cs`:
+
+```csharp
+using UnityEngine;
+using Unity.Robotics.UrdfImporter;
+
+public class URDFImporter : MonoBehaviour
+{
+    public string urdfPath = "Assets/URDF/simple_humanoid.urdf";
+
+    void Start()
+    {
+        // Import URDF at runtime
+        GameObject robot = UrdfRobotExtensions.Create(urdfPath);
+
+        // Position robot
+        robot.transform.position = new Vector3(0, 0.5f, 0);
+
+        Debug.Log("URDF imported: " + robot.name);
+    }
+}
+```
+
+---
+
+## Understanding Unity's Articulation Body
+
+**Articulation Body** = Unity's advanced physics system for robot joints.
+
+### Comparison to Rigidbody
+
+| Feature | **Rigidbody** | **Articulation Body** |
+|---------|---------------|----------------------|
+| **Joint Stability** | Poor for long chains | Excellent |
+| **Precision** | Low | High |
+| **Performance** | Fast | Slower but stable |
+| **Use Case** | Simple objects | Robots, articulated systems |
+
+### Configuring Articulation Body
+
+```csharp
+// Get ArticulationBody component
+ArticulationBody joint = GetComponent<ArticulationBody>();
+
+// Configure joint
+joint.jointType = ArticulationJointType.RevoluteJoint;
+joint.anchorPosition = new Vector3(0, 0.15f, 0.5f);
+joint.anchorRotation = Quaternion.identity;
+
+// Set limits
+ArticulationDrive drive = joint.xDrive;
+drive.lowerLimit = -180f;  // Degrees
+drive.upperLimit = 180f;
+drive.stiffness = 10000f;
+drive.damping = 100f;
+drive.forceLimit = 50f;
+joint.xDrive = drive;
+
+// Set target position
+joint.SetDriveTarget(ArticulationDriveAxis.X, 45f);  // 45 degrees
+```
+
+---
+
+## Subscribing to ROS 2 Topics in Unity
+
+### Example: Visualize Joint States
+
+Create `JointStateSubscriber.cs`:
+
+```csharp
+using UnityEngine;
+using Unity.Robotics.ROSTCPConnector;
+using RosMessageTypes.Sensor;
+
+public class JointStateSubscriber : MonoBehaviour
+{
+    private ROSConnection ros;
+    public ArticulationBody leftShoulder;
+    public ArticulationBody rightShoulder;
+
+    void Start()
+    {
+        // Connect to ROS
+        ros = ROSConnection.GetOrCreateInstance();
+        ros.Subscribe<JointStateMsg>("joint_states", UpdateJoints);
+    }
+
+    void UpdateJoints(JointStateMsg msg)
+    {
+        // Find indices for our joints
+        int leftIndex = System.Array.IndexOf(msg.name, "left_shoulder");
+        int rightIndex = System.Array.IndexOf(msg.name, "right_shoulder");
+
+        if (leftIndex >= 0)
+        {
+            float angleDeg = (float)(msg.position[leftIndex] * Mathf.Rad2Deg);
+            leftShoulder.SetDriveTarget(ArticulationDriveAxis.X, angleDeg);
+        }
+
+        if (rightIndex >= 0)
+        {
+            float angleDeg = (float)(msg.position[rightIndex] * Mathf.Rad2Deg);
+            rightShoulder.SetDriveTarget(ArticulationDriveAxis.X, angleDeg);
+        }
+    }
+}
+```
+
+**Attach to GameObject**:
+1. Select robot root in Unity Hierarchy
+2. Add Component → Joint State Subscriber
+3. Drag left/right shoulder ArticulationBody components to script fields
+
+**Test**:
+```bash
+# Publish joint states from ROS 2
+ros2 topic pub /joint_states sensor_msgs/msg/JointState "{name: ['left_shoulder', 'right_shoulder'], position: [1.0, -1.0]}"
+```
+
+---
+
+## Publishing from Unity to ROS 2
+
+### Example: Publish Camera Images
+
+Create `CameraPublisher.cs`:
+
+```csharp
+using UnityEngine;
+using Unity.Robotics.ROSTCPConnector;
+using RosMessageTypes.Sensor;
+using Unity.Robotics.ROSTCPConnector.MessageGeneration;
+
+public class CameraPublisher : MonoBehaviour
+{
+    public Camera cam;
+    public string topicName = "/unity/camera/image";
+    public float publishRate = 10f;  // Hz
+
+    private ROSConnection ros;
+    private float timer = 0f;
+
+    void Start()
+    {
+        ros = ROSConnection.GetOrCreateInstance();
+        ros.RegisterPublisher<ImageMsg>(topicName);
+    }
+
+    void Update()
+    {
+        timer += Time.deltaTime;
+
+        if (timer >= 1f / publishRate)
+        {
+            PublishImage();
+            timer = 0f;
+        }
+    }
+
+    void PublishImage()
+    {
+        // Capture camera render
+        RenderTexture rt = new RenderTexture(640, 480, 24);
+        cam.targetTexture = rt;
+        cam.Render();
+
+        Texture2D image = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+        RenderTexture.active = rt;
+        image.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+        image.Apply();
+
+        // Convert to ROS message
+        ImageMsg msg = new ImageMsg
+        {
+            header = new RosMessageTypes.Std.HeaderMsg
+            {
+                stamp = new RosMessageTypes.BuiltinInterfaces.TimeMsg
+                {
+                    sec = (int)Time.time,
+                    nanosec = (uint)((Time.time % 1) * 1e9)
+                },
+                frame_id = "camera_link"
+            },
+            height = (uint)image.height,
+            width = (uint)image.width,
+            encoding = "rgb8",
+            step = (uint)(image.width * 3),
+            data = image.GetRawTextureData()
+        };
+
+        ros.Publish(topicName, msg);
+
+        // Cleanup
+        cam.targetTexture = null;
+        RenderTexture.active = null;
+        Destroy(rt);
+    }
+}
+```
+
+**View in ROS 2**:
+```bash
+ros2 topic echo /unity/camera/image
+ros2 run rqt_image_view rqt_image_view /unity/camera/image
+```
+
+---
+
+## Creating Photorealistic Scenes
+
+### Lighting
+
+**Add HDRI Skybox** (realistic outdoor lighting):
+
+1. Download free HDRI from [Poly Haven](https://polyhaven.com/hdris)
+2. In Unity: **Window → Rendering → Lighting**
+3. Set **Environment → Skybox Material** to HDRI texture
+4. Adjust **Intensity Multiplier** (0.5-2.0)
+
+**Add Directional Light** (sun):
+
+```csharp
+// Create sun
+GameObject sun = new GameObject("Sun");
+Light light = sun.AddComponent<Light>();
+light.type = LightType.Directional;
+light.intensity = 1.5f;
+light.color = new Color(1f, 0.95f, 0.9f);  // Warm sunlight
+sun.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+```
+
+### Materials
+
+**PBR (Physically Based Rendering)**:
+
+```csharp
+// Create metal material
+Material metal = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+metal.SetFloat("_Metallic", 1.0f);
+metal.SetFloat("_Smoothness", 0.8f);
+metal.SetColor("_BaseColor", new Color(0.7f, 0.7f, 0.7f));
+
+// Apply to robot part
+robotPart.GetComponent<Renderer>().material = metal;
+```
+
+### Post-Processing
+
+**Add Bloom, Color Grading, Depth of Field**:
+
+1. Install **Universal RP** package
+2. Add **Volume** GameObject
+3. Add **Post-process** effects:
+   - Bloom (intensity: 0.2)
+   - Color Grading (temperature: +10, saturation: +5)
+   - Vignette (intensity: 0.3)
+
+---
+
+## AR/VR Integration
+
+### VR Teleoperation
+
+**Setup**:
+1. Install **XR Plugin Management** (Window → Package Manager)
+2. Enable **OpenXR** or **Oculus XR Plugin**
+3. Add **XR Origin** (Camera Rig)
+
+**Head-Mounted Display View**:
+
+```csharp
+using UnityEngine.XR;
+
+public class VRCameraSync : MonoBehaviour
+{
+    private ROSConnection ros;
+
+    void Start()
+    {
+        ros = ROSConnection.GetOrCreateInstance();
+    }
+
+    void Update()
+    {
+        // Get HMD pose
+        Vector3 hmdPosition = InputTracking.GetLocalPosition(XRNode.Head);
+        Quaternion hmdRotation = InputTracking.GetLocalRotation(XRNode.Head);
+
+        // Publish to ROS 2 for robot head tracking
+        // (Custom message or TF transform)
+    }
+}
+```
+
+### AR Remote Monitoring
+
+**Overlay Robot Status on Real World**:
+
+1. Use **ARFoundation** for mobile AR
+2. Detect ground plane
+3. Spawn digital twin of robot at detected location
+4. Subscribe to `/joint_states` to mirror real robot
+
+---
+
+## Practical Example: Unity + Gazebo Co-Simulation
+
+Run physics in Gazebo, visualization in Unity:
+
+**Architecture**:
+```
+Gazebo (Physics) → Joint States → ROS 2 → Unity (Visualization)
+Gazebo Sensors → Camera/LiDAR → ROS 2 → Unity (Display)
+```
+
+**Workflow**:
+
+1. **Terminal 1**: Launch Gazebo with humanoid
+```bash
+ros2 launch humanoid_gazebo simulation.launch.py
+```
+
+2. **Terminal 2**: Launch ROS-TCP-Endpoint
+```bash
+ros2 run ros_tcp_endpoint default_server_endpoint
+```
+
+3. **Unity**: Open scene with humanoid, run `JointStateSubscriber`
+
+**Result**: Robot moves in Gazebo, Unity mirrors motion with photorealistic rendering.
+
+---
+
+## Performance Optimization
+
+**Reduce Draw Calls**:
+- Combine meshes (fewer GameObjects)
+- Use texture atlases
+- Enable GPU instancing
+
+**Physics Optimization**:
+- Use simplified collision meshes
+- Reduce `Fixed Timestep` (Edit → Project Settings → Time)
+- Disable physics for non-moving objects
+
+**Rendering Optimization**:
+- Use LOD (Level of Detail) for distant objects
+- Enable occlusion culling
+- Reduce shadow resolution for real-time applications
+
+---
+
+## Summary
+
+**Key Takeaways**:
+
+1. **Unity for Robotics**: Photorealistic visualization, AR/VR, synthetic data
+2. **Unity Robotics Hub**: URDF Importer, ROS-TCP-Connector for ROS 2 integration
+3. **Articulation Body**: Stable physics for robot joints
+4. **ROS 2 Integration**: Subscribe/publish topics, visualize sensor data
+5. **Photorealism**: HDRI lighting, PBR materials, post-processing
+6. **Co-Simulation**: Gazebo (physics) + Unity (visualization)
+
+**Next Chapter**: Chapter 3 will cover **Sensor Simulation** (LiDAR, depth cameras, IMU) in detail.
+
+---
+
+## Troubleshooting
+
+**Problem**: Unity can't connect to ROS-TCP-Endpoint
+
+**Solutions**:
+1. Check ROS-TCP-Endpoint is running: `ros2 node list`
+2. Verify IP/port in Unity (Robotics → ROS Settings)
+3. Check firewall settings (allow port 10000)
+
+**Problem**: URDF import fails
+
+**Solutions**:
+1. Validate URDF: `check_urdf model.urdf`
+2. Ensure mesh files are in correct paths
+3. Use absolute paths for mesh files
+
+**Problem**: Articulation Body joints are unstable
+
+**Solutions**:
+1. Increase `stiffness` and `damping` in ArticulationDrive
+2. Reduce physics timestep (Edit → Project Settings → Time)
+3. Check link masses are realistic
+
+---
+
+## Further Reading
+
+- [Unity Robotics Hub](https://github.com/Unity-Technologies/Unity-Robotics-Hub)
+- [Unity Manual - Articulation Body](https://docs.unity3d.com/Manual/class-ArticulationBody.html)
+- [ROS 2 Unity Integration Tutorial](https://github.com/Unity-Technologies/Unity-Robotics-Hub/blob/main/tutorials/ros_unity_integration/README.md)
+- [Unity XR Documentation](https://docs.unity3d.com/Manual/XR.html)
+
+---
+
+**Chapter 2 Complete!** ✅ You've mastered Unity for photorealistic robot visualization and ROS 2 integration. Proceed to **Chapter 3: Sensor Simulation** to learn LiDAR, depth cameras, and IMU simulation.

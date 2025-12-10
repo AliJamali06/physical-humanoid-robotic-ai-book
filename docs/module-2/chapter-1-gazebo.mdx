@@ -1,0 +1,666 @@
+---
+title: "Chapter 1: Gazebo Physics Simulation"
+sidebar_position: 2
+description: Learn Gazebo physics simulation for ROS 2, URDF integration, physics properties, sensors, and actuators for humanoid robot testing
+keywords: [gazebo, physics simulation, ros2, urdf, sensors, actuators, robotics simulation, digital twin]
+---
+
+# Chapter 1: Gazebo Physics Simulation
+
+## Learning Objectives
+
+By the end of this chapter, you will be able to:
+
+- **Explain** what Gazebo is and why it's essential for robotics development
+- **Launch** Gazebo with ROS 2 and spawn URDF models
+- **Configure** physics properties (gravity, friction, damping, inertia)
+- **Add** Gazebo plugins for sensors and actuators
+- **Control** simulated robots using ROS 2 topics and services
+- **Debug** simulation issues using Gazebo GUI tools
+
+**Estimated Time**: 75-90 minutes
+
+---
+
+## Prerequisites
+
+- **Module 1**: ROS 2 nodes, topics, services, and URDF basics
+- **Linux/Ubuntu**: Command-line proficiency
+- **ROS 2 Humble**: Installed with Gazebo integration
+- **Python/C++**: Basic understanding for plugin configuration
+
+---
+
+## What is Gazebo?
+
+**Gazebo** is a powerful **3D robot simulator** that provides:
+
+- **Physics Engine**: Realistic dynamics (gravity, collisions, friction)
+- **Sensor Simulation**: Camera, LiDAR, IMU, depth sensors
+- **ROS 2 Integration**: Seamless communication with ROS 2 nodes
+- **Visualization**: 3D rendering of robots and environments
+
+### Why Use Gazebo?
+
+**Safe Testing**: Test dangerous scenarios without risking hardware
+- Fall recovery algorithms
+- High-speed navigation
+- Manipulation tasks near obstacles
+
+**Rapid Iteration**: No hardware setup delays
+- Test code changes instantly
+- Parallel experiments
+- Automated testing in CI/CD
+
+**Sensor Simulation**: Generate realistic sensor data
+- LiDAR point clouds
+- Camera images with noise
+- IMU readings with drift
+
+**Cost-Effective**: No need for multiple physical robots
+- Scale to hundreds of robots
+- Test in varied environments
+- Reproduce edge cases reliably
+
+---
+
+## Gazebo Architecture
+
+```
+┌─────────────────────────────────────────┐
+│          Gazebo Simulator               │
+│                                         │
+│  ┌───────────┐      ┌──────────────┐   │
+│  │  Physics  │      │  Rendering   │   │
+│  │  Engine   │◀────▶│  Engine      │   │
+│  │  (ODE)    │      │  (OGRE)      │   │
+│  └───────────┘      └──────────────┘   │
+│       ▲                    ▲            │
+│       │                    │            │
+│  ┌────┴────────────────────┴─────┐     │
+│  │     Gazebo Plugins             │     │
+│  │  (Sensors, Actuators, ROS)     │     │
+│  └────────────────────────────────┘     │
+└─────────────────────────────────────────┘
+            ▲         ▼
+┌───────────┴─────────┴──────────────┐
+│         ROS 2 Bridge                │
+│  (ros_gz_bridge, ros_gz_sim)        │
+└─────────────────────────────────────┘
+            ▲         ▼
+┌───────────┴─────────┴──────────────┐
+│       ROS 2 Nodes                   │
+│  (Controllers, Planning, Perception)│
+└─────────────────────────────────────┘
+```
+
+**Key Components**:
+- **Physics Engine**: Computes dynamics (default: ODE, optional: Bullet, Simbody)
+- **Rendering Engine**: Visualizes scene (OGRE 3D graphics)
+- **Plugins**: Extend functionality (sensors, actuators, ROS 2 integration)
+- **ROS 2 Bridge**: Translates Gazebo messages to ROS 2 topics/services
+
+---
+
+## Installing Gazebo for ROS 2 Humble
+
+### Install Gazebo Fortress (Recommended for Humble)
+
+```bash
+# Install Gazebo and ROS 2 integration
+sudo apt update
+sudo apt install ros-humble-ros-gz ros-humble-ros-gz-sim ros-humble-ros-gz-bridge
+
+# Verify installation
+gz sim --version
+```
+
+**Expected Output**:
+```
+Gazebo Sim, version 7.x.x
+```
+
+### Alternative: Gazebo Classic (Older, Stable)
+
+```bash
+sudo apt install ros-humble-gazebo-ros-pkgs ros-humble-gazebo-ros
+```
+
+:::tip
+This chapter uses **Gazebo Fortress** (new architecture). Commands differ slightly from Gazebo Classic (`gazebo` vs `gz sim`).
+:::
+
+---
+
+## Launching Gazebo with ROS 2
+
+### Basic Launch (Empty World)
+
+```bash
+source /opt/ros/humble/setup.bash
+gz sim empty.sdf
+```
+
+**What You'll See**:
+- 3D viewport with ground plane
+- Toolbar (play, pause, reset)
+- Entity tree (world, models)
+
+### Launch with ROS 2 Bridge
+
+Create `launch_gazebo.launch.py`:
+
+```python
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+import os
+
+
+def generate_launch_description():
+    # Gazebo launch
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(
+                get_package_share_directory('ros_gz_sim'),
+                'launch',
+                'gz_sim.launch.py'
+            )
+        ]),
+        launch_arguments={'gz_args': '-r empty.sdf'}.items()
+    )
+
+    # ROS 2 - Gazebo bridge for clock
+    bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
+        output='screen'
+    )
+
+    return LaunchDescription([
+        gazebo,
+        bridge
+    ])
+```
+
+**Run**:
+```bash
+ros2 launch launch_gazebo.launch.py
+```
+
+---
+
+## Spawning URDF Models in Gazebo
+
+### Method 1: Convert URDF to SDF
+
+Gazebo uses **SDF (Simulation Description Format)**, but URDF can be converted:
+
+```bash
+# Convert URDF to SDF
+gz sdf -p simple_humanoid.urdf > simple_humanoid.sdf
+
+# Launch Gazebo with model
+gz sim simple_humanoid.sdf
+```
+
+### Method 2: Spawn from ROS 2
+
+Create `spawn_robot.launch.py`:
+
+```python
+from launch import LaunchDescription
+from launch_ros.actions import Node
+import os
+
+
+def generate_launch_description():
+    # Read URDF
+    urdf_file = os.path.join(os.getcwd(), 'simple_humanoid.urdf')
+    with open(urdf_file, 'r') as file:
+        robot_desc = file.read()
+
+    return LaunchDescription([
+        # Robot State Publisher
+        Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            output='screen',
+            parameters=[{'robot_description': robot_desc}]
+        ),
+
+        # Spawn Entity (loads URDF into Gazebo)
+        Node(
+            package='ros_gz_sim',
+            executable='create',
+            arguments=[
+                '-name', 'humanoid',
+                '-topic', '/robot_description',
+                '-x', '0',
+                '-y', '0',
+                '-z', '0.5'
+            ],
+            output='screen'
+        )
+    ])
+```
+
+**Usage**:
+```bash
+# Terminal 1: Launch Gazebo
+gz sim empty.sdf
+
+# Terminal 2: Spawn robot
+ros2 launch spawn_robot.launch.py
+```
+
+---
+
+## Configuring Physics Properties
+
+### Adding Gazebo Tags to URDF
+
+Gazebo requires additional tags in URDF for physics and rendering:
+
+```xml
+<?xml version="1.0"?>
+<robot name="simple_humanoid">
+
+  <!-- ... existing links ... -->
+
+  <link name="torso">
+    <!-- Visual and collision geometry -->
+    <visual>
+      <geometry>
+        <box size="0.3 0.2 0.6"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <box size="0.3 0.2 0.6"/>
+      </geometry>
+    </collision>
+
+    <!-- Inertial properties (REQUIRED for physics) -->
+    <inertial>
+      <origin xyz="0 0 0.3" rpy="0 0 0"/>
+      <mass value="10.0"/>
+      <inertia ixx="0.5" ixy="0" ixz="0" iyy="0.5" iyz="0" izz="0.2"/>
+    </inertial>
+  </link>
+
+  <!-- Gazebo-specific properties -->
+  <gazebo reference="torso">
+    <material>Gazebo/Gray</material>
+    <mu1>0.8</mu1>  <!-- Friction coefficient 1 -->
+    <mu2>0.8</mu2>  <!-- Friction coefficient 2 -->
+    <kp>1000000.0</kp>  <!-- Contact stiffness -->
+    <kd>1.0</kd>  <!-- Contact damping -->
+  </gazebo>
+
+  <!-- ... joints ... -->
+
+  <!-- Joint properties -->
+  <joint name="left_shoulder" type="revolute">
+    <parent link="torso"/>
+    <child link="left_upper_arm"/>
+    <origin xyz="0 0.15 0.5" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14" upper="3.14" effort="30" velocity="2.0"/>
+
+    <!-- Joint dynamics -->
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <!-- Gazebo joint properties -->
+  <gazebo reference="left_shoulder">
+    <implicitSpringDamper>true</implicitSpringDamper>
+  </gazebo>
+
+</robot>
+```
+
+### Physics Parameters
+
+**Friction** (`mu1`, `mu2`):
+- `0.0`: Frictionless (ice)
+- `0.5`: Low friction (smooth floor)
+- `1.0`: High friction (rubber on concrete)
+
+**Contact Stiffness** (`kp`):
+- Higher values: Stiffer contacts (less penetration)
+- Lower values: Softer contacts (more realistic but slower simulation)
+
+**Damping** (`damping`):
+- Higher values: Slower motion (viscous environment)
+- Lower values: Free motion
+
+**Effort/Velocity Limits**:
+- `effort`: Maximum torque (N⋅m for revolute, N for prismatic)
+- `velocity`: Maximum speed (rad/s or m/s)
+
+---
+
+## Adding Sensors with Gazebo Plugins
+
+### Camera Sensor
+
+Add to URDF:
+
+```xml
+<link name="camera_link">
+  <visual>
+    <geometry>
+      <box size="0.05 0.05 0.05"/>
+    </geometry>
+  </visual>
+  <inertial>
+    <mass value="0.1"/>
+    <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+  </inertial>
+</link>
+
+<joint name="camera_joint" type="fixed">
+  <parent link="head"/>
+  <child link="camera_link"/>
+  <origin xyz="0.1 0 0" rpy="0 0 0"/>
+</joint>
+
+<!-- Gazebo Camera Plugin -->
+<gazebo reference="camera_link">
+  <sensor name="camera" type="camera">
+    <update_rate>30</update_rate>
+    <camera>
+      <horizontal_fov>1.047</horizontal_fov>  <!-- 60 degrees -->
+      <image>
+        <width>640</width>
+        <height>480</height>
+        <format>R8G8B8</format>
+      </image>
+      <clip>
+        <near>0.1</near>
+        <far>100</far>
+      </clip>
+      <noise>
+        <type>gaussian</type>
+        <mean>0.0</mean>
+        <stddev>0.007</stddev>
+      </noise>
+    </camera>
+
+    <!-- Publish to ROS 2 topic -->
+    <plugin filename="libgazebo_ros_camera.so" name="camera_controller">
+      <ros>
+        <namespace>/humanoid</namespace>
+        <argument>image_raw:=camera/image</argument>
+        <argument>camera_info:=camera/camera_info</argument>
+      </ros>
+      <frame_name>camera_link</frame_name>
+    </plugin>
+  </sensor>
+</gazebo>
+```
+
+**Published Topics**:
+- `/humanoid/camera/image`: `sensor_msgs/Image`
+- `/humanoid/camera/camera_info`: `sensor_msgs/CameraInfo`
+
+**View Camera Feed**:
+```bash
+ros2 run rqt_image_view rqt_image_view /humanoid/camera/image
+```
+
+### IMU Sensor
+
+```xml
+<gazebo reference="torso">
+  <sensor name="imu_sensor" type="imu">
+    <update_rate>100</update_rate>
+    <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+      <ros>
+        <namespace>/humanoid</namespace>
+        <argument>~/out:=imu</argument>
+      </ros>
+      <frame_name>torso</frame_name>
+      <initial_orientation_as_reference>false</initial_orientation_as_reference>
+    </plugin>
+  </sensor>
+</gazebo>
+```
+
+**Published Topic**:
+- `/humanoid/imu`: `sensor_msgs/Imu` (orientation, angular velocity, linear acceleration)
+
+---
+
+## Controlling Joints with Gazebo
+
+### Method 1: Joint State Publisher
+
+Publish joint positions manually:
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+
+
+class JointController(Node):
+    def __init__(self):
+        super().__init__('joint_controller')
+        self.publisher = self.create_publisher(JointState, '/joint_states', 10)
+        self.timer = self.create_timer(0.05, self.publish_commands)
+
+    def publish_commands(self):
+        msg = JointState()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.name = ['left_shoulder', 'right_shoulder']
+        msg.position = [1.0, -1.0]  # Radians
+        self.publisher.publish(msg)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = JointController()
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+### Method 2: ros2_control Plugin
+
+Add `ros2_control` hardware interface to URDF:
+
+```xml
+<ros2_control name="HumanoidSystem" type="system">
+  <hardware>
+    <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+  </hardware>
+
+  <joint name="left_shoulder">
+    <command_interface name="position">
+      <param name="min">-3.14</param>
+      <param name="max">3.14</param>
+    </command_interface>
+    <state_interface name="position"/>
+    <state_interface name="velocity"/>
+  </joint>
+
+  <joint name="right_shoulder">
+    <command_interface name="position">
+      <param name="min">-3.14</param>
+      <param name="max">3.14</param>
+    </command_interface>
+    <state_interface name="position"/>
+    <state_interface name="velocity"/>
+  </joint>
+</ros2_control>
+
+<!-- Load Gazebo ros2_control plugin -->
+<gazebo>
+  <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+    <parameters>config/controllers.yaml</parameters>
+  </plugin>
+</gazebo>
+```
+
+**Controller Configuration** (`config/controllers.yaml`):
+
+```yaml
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    position_controller:
+      type: position_controllers/JointGroupPositionController
+
+position_controller:
+  ros__parameters:
+    joints:
+      - left_shoulder
+      - right_shoulder
+```
+
+**Launch Controllers**:
+```bash
+ros2 control load_controller --set-state active joint_state_broadcaster
+ros2 control load_controller --set-state active position_controller
+```
+
+**Send Commands**:
+```bash
+ros2 topic pub /position_controller/commands std_msgs/msg/Float64MultiArray "{data: [1.0, -1.0]}"
+```
+
+---
+
+## Practical Example: Simulated Gripper
+
+Let's simulate a gripper with prismatic joints:
+
+```xml
+<!-- Gripper finger (prismatic joint) -->
+<link name="gripper_finger">
+  <visual>
+    <geometry>
+      <box size="0.02 0.05 0.1"/>
+    </geometry>
+  </visual>
+  <collision>
+    <geometry>
+      <box size="0.02 0.05 0.1"/>
+    </geometry>
+  </collision>
+  <inertial>
+    <mass value="0.05"/>
+    <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+  </inertial>
+</link>
+
+<joint name="gripper_joint" type="prismatic">
+  <parent link="hand"/>
+  <child link="gripper_finger"/>
+  <origin xyz="0 0.03 0" rpy="0 0 0"/>
+  <axis xyz="0 1 0"/>  <!-- Slide along Y-axis -->
+  <limit lower="0" upper="0.05" effort="10" velocity="0.1"/>
+</joint>
+
+<gazebo reference="gripper_joint">
+  <provideFeedback>true</provideFeedback>
+  <implicitSpringDamper>true</implicitSpringDamper>
+</gazebo>
+```
+
+---
+
+## Debugging and Visualization
+
+### Gazebo GUI Tools
+
+**View → Joints**: Display joint axes and limits
+
+**View → Contacts**: Show collision points
+
+**View → Transparent**: See internal structure
+
+**View → Center of Mass**: Visualize COM
+
+### Command-Line Inspection
+
+**List Models**:
+```bash
+gz model -m humanoid -i
+```
+
+**Inspect Joints**:
+```bash
+gz joint -m humanoid -j left_shoulder --info
+```
+
+**Apply Force**:
+```bash
+gz model -m humanoid -l torso --force "10 0 0"
+```
+
+---
+
+## Common Issues and Solutions
+
+**Problem**: Robot falls through ground
+
+**Solution**: Check collision geometry exists and inertial properties are set
+
+**Problem**: Joints are too stiff or wobbly
+
+**Solution**: Adjust `damping` and `friction` in joint `<dynamics>`
+
+**Problem**: Simulation runs slowly
+
+**Solution**:
+- Simplify collision geometry
+- Reduce `update_rate` for sensors
+- Increase physics timestep (less accurate, faster)
+
+**Problem**: ROS 2 topics not appearing
+
+**Solution**: Check `ros_gz_bridge` is running and topic names match
+
+---
+
+## Summary
+
+**Key Takeaways**:
+
+1. **Gazebo**: Physics simulator for safe, cost-effective robot testing
+2. **URDF Integration**: Convert URDF to SDF or spawn directly with `ros_gz_sim`
+3. **Physics Properties**: Configure friction, damping, inertia for realistic behavior
+4. **Sensors**: Add camera, IMU, LiDAR via Gazebo plugins
+5. **Control**: Use `joint_states` or `ros2_control` for actuator commands
+6. **Debugging**: Use GUI tools (joints, contacts, COM visualization)
+
+**Next Chapter**: Chapter 2 will cover **Unity Rendering** for photorealistic visualization and VR/AR integration.
+
+---
+
+## Further Reading
+
+- [Gazebo Documentation](https://gazebosim.org/docs)
+- [ROS 2 Gazebo Integration](https://docs.ros.org/en/humble/Tutorials/Advanced/Simulators/Gazebo/Gazebo.html)
+- [Gazebo SDF Format](http://sdformat.org/spec)
+- [ros2_control Documentation](https://control.ros.org/humble/index.html)
+
+---
+
+**Chapter 1 Complete!** ✅ You've mastered Gazebo physics simulation for ROS 2. Proceed to **Chapter 2: Unity Rendering** for photorealistic visualization.

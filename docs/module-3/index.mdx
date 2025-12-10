@@ -1,0 +1,286 @@
+---
+sidebar_position: 0
+title: "Module 3 Overview"
+description: "Complete guide to Isaac Sim synthetic data, Visual SLAM, and Nav2 navigation for humanoid robots"
+---
+
+# Module 3: Isaac Perception & Navigation
+
+## The AI-Robot Brain: From Synthetic Data to Autonomous Navigation
+
+Welcome to **Module 3**, where you'll learn how humanoid robots **see their environment** and **navigate autonomously**. This module covers the complete perception and navigation pipeline using NVIDIA's Isaac ecosystem:
+
+- **Isaac Sim** for generating photorealistic synthetic training data
+- **Isaac ROS VSLAM** for GPU-accelerated robot localization
+- **Nav2** for autonomous path planning and obstacle avoidance
+
+:::tip What You'll Learn
+By the end of this module (estimated 4-6 hours), you will be able to:
+- **Generate** synthetic training data with domain randomization using Isaac Sim Replicator API
+- **Explain** the Visual SLAM pipeline (feature extraction → mapping → loop closure → optimization)
+- **Configure** Isaac ROS VSLAM for real-time robot localization (50-100 Hz)
+- **Design** Nav2 navigation systems with global planning (A*) and local planning (DWB)
+- **Adapt** wheeled robot navigation concepts for humanoid bipedal locomotion
+- **Integrate** the full pipeline: Isaac Sim → VSLAM → Nav2 → Robot Control
+:::
+
+---
+
+## Module Structure
+
+This module consists of three chapters, building progressively from data generation to autonomous navigation:
+
+### [Chapter 1: Isaac Sim Synthetic Data Generation](./chapter-1-isaac-sim)
+
+**Estimated time**: 25 minutes
+
+**Learning objectives**:
+- Understand Isaac Sim architecture (USD, RTX rendering, PhysX physics, ROS 2 bridge)
+- Generate synthetic training data using the Replicator API
+- Apply domain randomization techniques (lighting, textures, placement, camera poses)
+- Evaluate the value proposition of synthetic data (cost savings, perfect labels, scalability)
+
+**Key topics**:
+- Photorealistic simulation with NVIDIA Omniverse
+- Camera sensor types (RGB, depth, semantic segmentation)
+- Domain randomization workflow (scene → randomize → capture → export)
+- Sim-to-real transfer challenges
+
+**Prerequisites**: Module 1 (ROS 2 fundamentals), Module 2 (simulation basics)
+
+---
+
+### [Chapter 2: Visual SLAM with Isaac ROS](./chapter-2-isaac-ros-vslam)
+
+**Estimated time**: 30 minutes
+
+**Learning objectives**:
+- Describe the 6-stage VSLAM pipeline (features → odometry → mapping → loop closure)
+- Explain GPU acceleration benefits in Isaac ROS (10x faster feature extraction)
+- Interpret VSLAM output (Odometry messages, TF transforms, trajectory visualization)
+- Identify VSLAM limitations (low-texture environments, fast motion, lighting changes)
+
+**Key topics**:
+- Visual odometry and motion estimation
+- Loop closure for drift correction
+- Bundle adjustment and global optimization
+- ROS 2 integration (`/camera/image_raw` → VSLAM → `/odometry`)
+
+**Prerequisites**: Chapter 1, linear algebra basics, camera geometry
+
+---
+
+### [Chapter 3: Nav2 Humanoid Navigation](./chapter-3-nav2)
+
+**Estimated time**: 20 minutes
+
+**Learning objectives**:
+- Describe Nav2 architecture (localization → global planning → local planning → control)
+- Explain cost map representation (static, obstacle, inflation layers)
+- Compare path planning algorithms (A*, Dijkstra, DWB)
+- Evaluate humanoid-specific navigation considerations (footstep planning, rectangular footprint)
+
+**Key topics**:
+- Cost map layers and occupancy grids
+- Global planning (A* graph search)
+- Local planning (Dynamic Window Approach)
+- ROS 2 topics (`/goal_pose`, `/cmd_vel`, `/plan`)
+
+**Prerequisites**: Chapter 1-2, graph algorithms basics
+
+---
+
+## Why This Module Matters
+
+Autonomous navigation is the **foundation of mobile robotics**. Humanoid robots must:
+
+1. **Perceive** their environment (cameras, sensors)
+2. **Localize** themselves (know where they are)
+3. **Plan** paths to goals (avoid obstacles)
+4. **Execute** motion (walk, balance, adapt)
+
+This module teaches the first three capabilities using industry-standard tools:
+
+| Capability | Technology | Chapter |
+|------------|------------|---------|
+| **Perception** (Training Data) | Isaac Sim Replicator | Chapter 1 |
+| **Localization** (Where am I?) | Isaac ROS VSLAM | Chapter 2 |
+| **Planning** (How do I get there?) | Nav2 | Chapter 3 |
+| **Execution** (How do I walk?) | *Module 4 (VLA)* | Next module |
+
+---
+
+## The Complete Pipeline
+
+Here's how all three chapters connect in a real humanoid robot system:
+
+```mermaid
+graph LR
+    IsaacSim[Isaac Sim<br/>Synthetic Data]:::simulation
+    TrainingData[Training Dataset<br/>RGB + Labels]:::data
+    PerceptionModel[Perception Model<br/>Object Detection]:::perception
+
+    Camera[Robot Camera<br/>Live Images]:::sensor
+    VSLAM[Isaac ROS VSLAM<br/>Localization]:::perception
+    Pose[Robot Pose<br/>map → odom TF]:::data
+
+    Nav2[Nav2 Stack<br/>Path Planning]:::planning
+    CmdVel[/cmd_vel<br/>Velocity Commands]:::command
+    Robot[Humanoid Robot<br/>Walking Controller]:::robot
+
+    IsaacSim -->|Generate| TrainingData
+    TrainingData -->|Train| PerceptionModel
+    PerceptionModel -->|Deploy| Camera
+
+    Camera -->|Images| VSLAM
+    VSLAM -->|Pose| Pose
+    Pose --> Nav2
+    Nav2 -->|Commands| CmdVel
+    CmdVel --> Robot
+
+    classDef simulation fill:#e1f5ff,stroke:#0084c7,stroke-width:2px,color:#000
+    classDef data fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000
+    classDef perception fill:#e1bee7,stroke:#9c27b0,stroke-width:3px,color:#000
+    classDef sensor fill:#c8e6c9,stroke:#4caf50,stroke-width:2px,color:#000
+    classDef planning fill:#ffe0b2,stroke:#ff9800,stroke-width:3px,color:#000
+    classDef command fill:#ffccbc,stroke:#ff5722,stroke-width:2px,color:#000
+    classDef robot fill:#cfd8dc,stroke:#607d8b,stroke-width:2px,color:#000
+```
+
+**Workflow**:
+1. **Offline** (Chapter 1): Use Isaac Sim to generate 10,000+ labeled images → Train object detection model
+2. **Runtime** (Chapter 2): Robot camera captures live images → Isaac ROS VSLAM computes robot pose
+3. **Runtime** (Chapter 3): Nav2 plans path using VSLAM pose → Sends velocity commands to robot
+
+---
+
+## Hands-On vs. Conceptual Learning
+
+This module is designed for **conceptual understanding** without requiring expensive hardware:
+
+| Component | Required Hardware | Conceptual Learning | Hands-On Optional |
+|-----------|-------------------|---------------------|-------------------|
+| **Isaac Sim** | NVIDIA RTX GPU ($500+) | ✅ All concepts teachable | Optional: Cloud GPU |
+| **Isaac ROS VSLAM** | NVIDIA Jetson or RTX GPU | ✅ All concepts teachable | Optional: Isaac Sim |
+| **Nav2** | Any computer with ROS 2 | ✅ All concepts teachable | Optional: Gazebo sim |
+
+**You can complete this module without any specialized hardware.** All chapters include:
+- Conceptual explanations with diagrams
+- Code examples (read and understand without executing)
+- ROS 2 topic/message examples
+- Configuration file walkthroughs
+
+If you **do** have access to compatible hardware, optional hands-on exercises are provided throughout.
+
+---
+
+## Prerequisites
+
+Before starting this module, you should have:
+
+✅ **Module 1 completed**: ROS 2 topics, nodes, TF transforms, launch files
+✅ **Module 2 completed**: Gazebo simulation, URDF, robot modeling
+✅ **Python basics**: Functions, loops, imports
+✅ **Linear algebra basics**: Vectors, matrices, coordinate transformations
+✅ **Graph algorithms basics**: Breadth-first search, Dijkstra's algorithm (helpful for Chapter 3)
+
+---
+
+## Learning Path
+
+### Recommended Order (Sequential)
+
+1. **Chapter 1** (Isaac Sim) → Learn synthetic data generation
+2. **Chapter 2** (VSLAM) → Learn robot localization using camera data from Chapter 1
+3. **Chapter 3** (Nav2) → Learn autonomous navigation using poses from Chapter 2
+
+Each chapter builds on the previous, so sequential order is recommended.
+
+### Alternative: Jump to Specific Topics
+
+If you already understand certain concepts, you can skip chapters:
+
+- **Skip Chapter 1** if you already know synthetic data generation (Unity, Unreal, Blender)
+- **Skip Chapter 2** if you already understand SLAM (ORB-SLAM, RTAB-Map, Cartographer)
+- **Skip Chapter 3** if you already know Nav2 or move_base (ROS 1 navigation)
+
+However, even experienced learners may benefit from Isaac-specific GPU acceleration insights.
+
+---
+
+## Success Criteria
+
+By the end of this module, you should be able to:
+
+- [ ] **SC-001**: Explain Isaac Sim's synthetic data pipeline in <10 minutes (Chapter 1)
+- [ ] **SC-002**: Identify 3 domain randomization techniques (lighting, textures, placement) (Chapter 1)
+- [ ] **SC-003**: Describe the 6-stage VSLAM pipeline in <15 minutes (Chapter 2)
+- [ ] **SC-004**: Compare CPU-based SLAM vs. GPU-accelerated Isaac ROS (Chapter 2)
+- [ ] **SC-005**: Interpret nav_msgs/Odometry messages from VSLAM output (Chapter 2)
+- [ ] **SC-006**: Describe Nav2 architecture (4 stages: localization → global → local → control) (Chapter 3)
+- [ ] **SC-007**: Explain cost map layers (static, obstacle, inflation) (Chapter 3)
+- [ ] **SC-008**: Configure robot footprint for humanoid navigation (rectangular vs. circular) (Chapter 3)
+- [ ] **SC-009**: Complete all chapters in 4-6 hours total
+- [ ] **SC-010**: Explain full pipeline integration (Isaac Sim → VSLAM → Nav2)
+
+---
+
+## Resources
+
+### Official Documentation
+- [NVIDIA Isaac Sim Documentation](https://docs.nvidia.com/isaac/doc/isaac_sim/index.html)
+- [Isaac ROS Documentation](https://nvidia-isaac-ros.github.io/)
+- [Nav2 Documentation](https://navigation.ros.org/)
+- [ROS 2 Humble Documentation](https://docs.ros.org/en/humble/)
+
+### Research Papers
+- Domain Randomization: [Tobin2017], [Tremblay2018]
+- Visual SLAM: [Cadena2016], [MurArtal2017]
+- Navigation: [Fox1997], [Rösmann2017]
+
+### Code Examples
+All code examples from this module are available in `static/code/module-3/`:
+- `isaac_replicator_example.py` (Chapter 1)
+- `vslam_config.yaml`, `launch_vslam.sh` (Chapter 2)
+- `nav2_global_planner.yaml`, `nav2_local_planner.yaml`, `launch_nav2.sh` (Chapter 3)
+
+### Diagrams and Visualizations
+All diagrams are in `static/img/module-3/` following the color scheme (purple = perception, orange = planning, green = sensors, red = commands).
+
+---
+
+## Common Questions
+
+**Q: Do I need an NVIDIA GPU to complete this module?**
+A: No. All chapters are designed for conceptual learning without specialized hardware. Hands-on exercises are optional.
+
+**Q: Can I use this with a wheeled robot instead of a humanoid?**
+A: Yes! Chapters 1-2 apply to any mobile robot. Chapter 3 discusses humanoid-specific adaptations, but core Nav2 concepts apply to all robots.
+
+**Q: How does this integrate with Module 4 (VLA)?**
+A: Module 3 provides the **navigation foundation**. Module 4 adds **natural language control** ("Go to the kitchen") and **manipulation** (grasping objects).
+
+**Q: What if I get stuck?**
+A: Each chapter includes troubleshooting sections. Also see:
+- Common misconceptions (addressed in callout boxes)
+- Failure modes and debugging tips
+- [Module 3 Bibliography](./bibliography.md) for further reading
+
+---
+
+## Let's Begin!
+
+Ready to dive into the world of robot perception and navigation? Start with **[Chapter 1: Isaac Sim Synthetic Data Generation](./chapter-1-isaac-sim)** to learn how to generate photorealistic training data for robot vision systems.
+
+**Estimated completion**: 4-6 hours for all three chapters
+**Difficulty**: Intermediate (requires Module 1-2 completion)
+**Hardware**: Optional (conceptual learning without hands-on)
+
+---
+
+## Module Navigation
+
+- **Next**: [Chapter 1: Isaac Sim Synthetic Data Generation](./chapter-1-isaac-sim)
+- **Bibliography**: [Module 3 References](./bibliography.md)
+- **Diagrams**: [Diagram Style Guide](./diagram-style-guide.md)
+- **ROS 2 Topics**: [Topic Flow Diagram](./ros2-topic-flow.md)

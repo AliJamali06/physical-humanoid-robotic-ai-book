@@ -1,0 +1,786 @@
+---
+title: "Chapter 2: LLM-Based Cognitive Planning"
+sidebar_position: 3
+description: Learn how Large Language Models translate natural language commands into structured robot action sequences, including prompt engineering, task decomposition, and ROS 2 integration
+keywords: [llm, language models, cognitive planning, prompt engineering, task decomposition, robotics, ros2, gpt, claude]
+---
+
+# Chapter 2: LLM-Based Cognitive Planning
+
+## Learning Objectives
+
+By the end of this chapter, you will be able to:
+
+- **Explain** how LLMs decompose high-level commands into robot action sequences
+- **Design** effective prompts for robot task planning
+- **Identify** LLM limitations (hallucination, latency, grounding errors)
+- **Implement** validation and safety checks for LLM-generated plans
+- **Compare** LLM-based planning with traditional planning approaches
+- **Integrate** LLM planners with ROS 2 action servers
+
+**Estimated Time**: 60-90 minutes
+
+---
+
+## Prerequisites
+
+- **Chapter 1**: Whisper voice command transcription
+- **Module 1**: ROS 2 topics, services, and actions
+- **Module 3**: Nav2 navigation basics
+- **LLM Basics**: Familiarity with ChatGPT, Claude, or similar models
+
+---
+
+## Why LLMs for Robot Planning?
+
+**Traditional Planning** requires:
+- Formal specification languages (PDDL, STRIPS)
+- Domain experts to define preconditions and effects
+- Brittle to changes in task requirements
+
+**LLM-Based Planning** offers:
+- Natural language interfaces (no formal syntax)
+- Generalization from training data
+- Rapid prototyping and iteration
+
+### Example: Fetch-and-Deliver Task
+
+**Traditional Approach** (PDDL):
+```pddl
+(:action navigate
+  :parameters (?from ?to - location)
+  :precondition (and (at ?from) (path ?from ?to))
+  :effect (and (at ?to) (not (at ?from))))
+
+(:action grasp
+  :parameters (?obj - object)
+  :precondition (and (at ?loc) (object-at ?obj ?loc) (hand-empty))
+  :effect (and (holding ?obj) (not (hand-empty))))
+```
+
+**LLM Approach** (Natural Language):
+```
+User: "Bring me a drink from the kitchen"
+
+LLM Output:
+1. Navigate to kitchen
+2. Detect drink objects
+3. Grasp drink
+4. Navigate back to user
+5. Hand drink to user
+```
+
+---
+
+## How LLMs Work (Robotics Perspective)
+
+### Autoregressive Generation
+
+LLMs predict the next token based on previous context:
+
+```
+Input: "Navigate to the"
+LLM: "kitchen" (high probability)
+     "bathroom" (medium probability)
+     "moon" (low probability)
+```
+
+**For Robotics**:
+- Input: Human command + robot capabilities
+- Output: Sequence of actions constrained by robot's abilities
+
+### Key Concepts
+
+**Tokens**: Words or subwords
+- "Navigate to kitchen" → ["Navigate", "to", "kitchen"]
+
+**Context Window**: Maximum input length
+- GPT-3.5: ~4,000 tokens (~3,000 words)
+- GPT-4: ~8,000-32,000 tokens
+- Claude 3: ~200,000 tokens
+
+**Temperature**: Randomness in generation
+- 0.0: Deterministic (always same output)
+- 1.0: Creative (varied outputs)
+- For robotics: Use 0.0-0.3 (predictable behavior)
+
+---
+
+## Prompt Engineering for Robotics
+
+### System Prompt: Define Robot Capabilities
+
+**Purpose**: Tell LLM what the robot can and cannot do.
+
+```python
+SYSTEM_PROMPT = """
+You are a cognitive planning assistant for a humanoid robot.
+
+ROBOT CAPABILITIES:
+- navigate(location): Move to named locations (kitchen, living_room, bedroom)
+- detect_objects(object_type): Find objects using vision (cup, bottle, book, box)
+- grasp_object(object_id): Pick up detected objects
+- place_object(surface): Put held object on surface (table, counter, floor)
+- speak(text): Say text to user via speech synthesis
+
+CONSTRAINTS:
+- Can only grasp objects smaller than 20cm
+- Cannot navigate stairs or climb
+- Maximum carrying weight: 2kg
+- Battery lasts 2 hours of continuous operation
+
+OUTPUT FORMAT:
+Generate a numbered list of actions in JSON format:
+[
+  {"action": "navigate", "params": {"location": "kitchen"}},
+  {"action": "detect_objects", "params": {"object_type": "cup"}},
+  ...
+]
+"""
+```
+
+### User Prompt: Provide Task Description
+
+```python
+user_command = "Bring me a drink from the kitchen"
+
+USER_PROMPT = f"""
+Task: {user_command}
+
+Current robot state:
+- Location: living_room
+- Holding: nothing
+- Battery: 85%
+
+Available locations: living_room, kitchen, bedroom, bathroom
+
+Generate a plan to accomplish this task.
+"""
+```
+
+### Complete Prompt Example
+
+```python
+import openai
+
+def generate_plan(user_command, robot_state):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Task: {user_command}\n\nRobot state: {robot_state}"}
+        ],
+        temperature=0.2,  # Low temperature for consistency
+        max_tokens=500
+    )
+
+    return response.choices[0].message.content
+```
+
+**Output**:
+```json
+[
+  {"action": "navigate", "params": {"location": "kitchen"}},
+  {"action": "detect_objects", "params": {"object_type": "drink"}},
+  {"action": "grasp_object", "params": {"object_id": "detected_drink_0"}},
+  {"action": "navigate", "params": {"location": "living_room"}},
+  {"action": "place_object", "params": {"surface": "table"}},
+  {"action": "speak", "params": {"text": "Here is your drink"}}
+]
+```
+
+---
+
+## Task Decomposition Process
+
+### High-Level Command → Sub-Tasks
+
+LLMs excel at breaking complex commands into steps:
+
+**Command**: "Tidy up the living room"
+
+**LLM Decomposition**:
+```
+1. Scan living room for objects out of place
+2. For each object:
+   a. Identify object type
+   b. Determine correct storage location
+   c. Grasp object
+   d. Navigate to storage location
+   e. Place object
+3. Return to charging station
+4. Report completion
+```
+
+### Grounding Actions to Robot APIs
+
+**Grounding**: Map abstract actions to executable robot functions.
+
+```python
+# LLM output (abstract)
+{"action": "pick up the red cup"}
+
+# Grounded to robot API (concrete)
+vision_result = detect_objects(color="red", type="cup")
+if vision_result.objects:
+    target = vision_result.objects[0]
+    move_arm(target.position)
+    close_gripper()
+```
+
+### Example: Multi-Step Task
+
+**Command**: "Make me a sandwich"
+
+**LLM Plan**:
+```json
+[
+  {"action": "navigate", "params": {"location": "kitchen"}},
+  {"action": "detect_objects", "params": {"object_type": "bread"}},
+  {"action": "grasp_object", "params": {"object_id": "bread_0"}},
+  {"action": "place_object", "params": {"surface": "counter"}},
+  {"action": "detect_objects", "params": {"object_type": "cheese"}},
+  {"action": "grasp_object", "params": {"object_id": "cheese_0"}},
+  {"action": "place_object", "params": {"surface": "bread"}},
+  {"action": "speak", "params": {"text": "Sandwich is ready"}}
+]
+```
+
+:::info Note
+This is a simplified example. Real sandwich-making requires manipulation skills beyond most current humanoid robots.
+:::
+
+---
+
+## LLM Output Formats
+
+### Format 1: Natural Language Steps
+
+**Pros**: Easy to understand, flexible
+**Cons**: Requires parsing, ambiguous
+
+```
+1. Go to the kitchen
+2. Find a cup
+3. Pick it up
+4. Come back
+5. Give it to the user
+```
+
+### Format 2: Structured JSON (Recommended)
+
+**Pros**: Machine-readable, precise
+**Cons**: Requires careful prompting
+
+```json
+{
+  "plan": [
+    {"action": "navigate", "target": "kitchen"},
+    {"action": "detect", "object_type": "cup"},
+    {"action": "grasp", "object_id": "cup_0"},
+    {"action": "navigate", "target": "user_location"},
+    {"action": "handover", "recipient": "user"}
+  ],
+  "estimated_time": 120,
+  "dependencies": ["vision_system", "navigation", "manipulation"]
+}
+```
+
+### Format 3: ROS 2 Action Goals (Direct Integration)
+
+**Pros**: Directly executable in ROS 2
+**Cons**: LLM must know ROS 2 message formats
+
+```python
+# LLM generates ROS 2 action goal YAML
+goals:
+  - action_type: nav2_msgs/NavigateToPose
+    goal:
+      pose:
+        position: {x: 2.0, y: 1.5, z: 0.0}
+        orientation: {w: 1.0}
+
+  - action_type: manipulation_msgs/GraspObject
+    goal:
+      object_id: "cup_detected_0"
+      approach_direction: "top"
+```
+
+---
+
+## LLM Limitations for Robotics
+
+### 1. Hallucination (Inventing Capabilities)
+
+**Problem**: LLM suggests actions the robot cannot perform.
+
+**Example**:
+```
+User: "Water the plants"
+LLM: "1. Navigate to plant
+      2. Fill watering can with water
+      3. Pour water on plant"
+
+Robot: ❌ No "fill watering can" capability
+```
+
+**Mitigation**:
+- Explicit capability list in system prompt
+- Post-generation validation
+- Few-shot examples of valid plans
+
+### 2. Grounding Errors (Abstract → Concrete)
+
+**Problem**: LLM uses vague terms not mapped to robot functions.
+
+**Example**:
+```
+LLM: "Put the object over there"
+Robot: ❌ "over there" is not a valid location
+```
+
+**Mitigation**:
+- Require specific locations/object IDs
+- Validate all parameters before execution
+
+### 3. Latency (Slow Planning)
+
+**Problem**: LLM inference takes 1-10 seconds per query.
+
+**Typical Latencies**:
+- GPT-3.5: 1-3 seconds
+- GPT-4: 3-10 seconds
+- Local models (Llama): 0.5-5 seconds (depends on hardware)
+
+**Mitigation**:
+- Cache common plans
+- Use smaller, faster models for simple tasks
+- Parallel planning (generate alternatives simultaneously)
+
+### 4. Context Window Limits
+
+**Problem**: Long conversations exceed token limits.
+
+**Example**:
+```
+User: [describes 20-step task with environment details]
+LLM: ❌ Input truncated, plan incomplete
+```
+
+**Mitigation**:
+- Summarize past context
+- Break long tasks into sub-tasks
+- Use models with larger context (Claude 3, GPT-4 Turbo)
+
+### 5. Safety and Correctness
+
+**Problem**: LLM may generate unsafe or invalid plans.
+
+**Example**:
+```
+LLM: "1. Navigate through closed door
+      2. Grasp fragile object with maximum force"
+```
+
+**Mitigation**:
+- Validate plans against safety rules
+- Simulate plans before execution
+- Human-in-the-loop for critical tasks
+
+---
+
+## Validation and Safety Checks
+
+### Pre-Execution Validation
+
+```python
+def validate_plan(plan, robot_state, environment):
+    """
+    Validate LLM-generated plan before execution
+    """
+    errors = []
+
+    for step in plan:
+        action = step["action"]
+        params = step["params"]
+
+        # Check 1: Action exists in robot capabilities
+        if action not in ROBOT_ACTIONS:
+            errors.append(f"Unknown action: {action}")
+
+        # Check 2: Required parameters present
+        required = ROBOT_ACTIONS[action]["required_params"]
+        if not all(p in params for p in required):
+            errors.append(f"Missing params for {action}: {required}")
+
+        # Check 3: Location exists
+        if action == "navigate":
+            if params["location"] not in environment.locations:
+                errors.append(f"Unknown location: {params['location']}")
+
+        # Check 4: Object is graspable
+        if action == "grasp_object":
+            obj = environment.get_object(params["object_id"])
+            if obj is None:
+                errors.append(f"Object not found: {params['object_id']}")
+            elif obj.weight > robot_state.max_payload:
+                errors.append(f"Object too heavy: {obj.weight}kg > {robot_state.max_payload}kg")
+
+    return len(errors) == 0, errors
+```
+
+### Runtime Monitoring
+
+```python
+def execute_plan_with_monitoring(plan):
+    """
+    Execute plan with error handling
+    """
+    for i, step in enumerate(plan):
+        print(f"Executing step {i+1}/{len(plan)}: {step['action']}")
+
+        try:
+            result = execute_action(step)
+
+            if not result.success:
+                print(f"Step failed: {result.error}")
+
+                # Request replanning
+                new_plan = replan_from_failure(plan[i:], result.error)
+                if new_plan:
+                    plan = plan[:i] + new_plan
+                else:
+                    print("Replanning failed. Aborting.")
+                    return False
+
+        except Exception as e:
+            print(f"Critical error: {e}")
+            emergency_stop()
+            return False
+
+    return True
+```
+
+---
+
+## LLM Planning vs Traditional Planning
+
+| Feature | **LLM-Based** | **Traditional (PDDL, BT)** |
+|---------|---------------|----------------------------|
+| **Input** | Natural language | Formal specification |
+| **Flexibility** | High (handles novel tasks) | Low (predefined domain) |
+| **Reliability** | Medium (can hallucinate) | High (provably correct) |
+| **Development Time** | Fast (prompt engineering) | Slow (domain modeling) |
+| **Explainability** | Medium (opaque reasoning) | High (explicit logic) |
+| **Latency** | Seconds (LLM inference) | Milliseconds (search) |
+| **Best For** | High-level task planning | Low-level motion planning |
+
+### When to Use Each
+
+**Use LLM Planning**:
+- ✅ High-level task decomposition
+- ✅ Natural language interfaces
+- ✅ Rapid prototyping
+- ✅ Tasks with many valid solutions
+
+**Use Traditional Planning**:
+- ✅ Safety-critical applications
+- ✅ Real-time performance required
+- ✅ Formal verification needed
+- ✅ Well-defined, narrow domains
+
+**Hybrid Approach** (Best Practice):
+- LLM for high-level planning ("bring me a drink")
+- Traditional planner for low-level execution (motion planning, collision avoidance)
+
+---
+
+## ROS 2 Integration Pattern
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│           Voice Command Input               │
+│         (from Whisper - Chapter 1)          │
+└──────────────────┬──────────────────────────┘
+                   │ /voice_command/text
+                   ▼
+┌─────────────────────────────────────────────┐
+│          LLM Planner Node                   │
+│  ┌──────────────────────────────────────┐   │
+│  │  1. Receive text command             │   │
+│  │  2. Query LLM with robot state       │   │
+│  │  3. Parse LLM response to JSON       │   │
+│  │  4. Validate plan                    │   │
+│  │  5. Publish action goals             │   │
+│  └──────────────────────────────────────┘   │
+└──────────────────┬──────────────────────────┘
+                   │ /planned_actions
+                   ▼
+┌─────────────────────────────────────────────┐
+│        Action Execution Node                │
+│  (Calls Nav2, MoveIt, Manipulation APIs)    │
+└─────────────────────────────────────────────┘
+```
+
+### LLM Planner Node Implementation
+
+```python
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+from std_msgs.msg import String
+from nav2_msgs.action import NavigateToPose
+import openai
+import json
+
+
+class LLMPlannerNode(Node):
+    def __init__(self):
+        super().__init__('llm_planner')
+
+        # Subscribe to voice commands
+        self.subscription = self.create_subscription(
+            String,
+            '/voice_command/text',
+            self.command_callback,
+            10
+        )
+
+        # Action clients for robot capabilities
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+
+        # OpenAI API setup
+        openai.api_key = "your-api-key"
+
+        self.get_logger().info('LLM Planner ready')
+
+    def command_callback(self, msg):
+        """
+        Process voice command and generate plan
+        """
+        command = msg.data
+        self.get_logger().info(f'Received command: {command}')
+
+        # Query LLM
+        plan = self.generate_plan(command)
+
+        if plan:
+            self.get_logger().info(f'Generated plan: {json.dumps(plan, indent=2)}')
+
+            # Validate
+            valid, errors = self.validate_plan(plan)
+            if valid:
+                self.execute_plan(plan)
+            else:
+                self.get_logger().error(f'Invalid plan: {errors}')
+        else:
+            self.get_logger().error('Failed to generate plan')
+
+    def generate_plan(self, command):
+        """
+        Query LLM for task plan
+        """
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Task: {command}"}
+                ],
+                temperature=0.2,
+                max_tokens=500
+            )
+
+            # Parse JSON response
+            plan_text = response.choices[0].message.content
+            plan = json.loads(plan_text)
+
+            return plan
+
+        except Exception as e:
+            self.get_logger().error(f'LLM query failed: {e}')
+            return None
+
+    def validate_plan(self, plan):
+        """
+        Validate plan before execution
+        """
+        # Implement validation logic from earlier section
+        return True, []
+
+    def execute_plan(self, plan):
+        """
+        Execute action sequence
+        """
+        for step in plan:
+            action = step["action"]
+            params = step["params"]
+
+            if action == "navigate":
+                self.execute_navigation(params["location"])
+            elif action == "speak":
+                self.execute_speech(params["text"])
+            # ... handle other actions
+
+    def execute_navigation(self, location):
+        """
+        Call Nav2 to navigate to location
+        """
+        goal_msg = NavigateToPose.Goal()
+        # Set goal pose based on location
+        # ...
+
+        self.nav_client.wait_for_server()
+        future = self.nav_client.send_goal_async(goal_msg)
+
+        # Wait for result
+        rclpy.spin_until_future_complete(self, future)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = LLMPlannerNode()
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Practical Example: Fetch-and-Deliver
+
+### Complete Workflow
+
+**1. User Command** (via Whisper):
+```
+"Bring me the red cup from the kitchen"
+```
+
+**2. LLM Planning** (with system prompt):
+
+```python
+SYSTEM_PROMPT = """
+You are a planner for a humanoid robot with these capabilities:
+- navigate(location): Go to kitchen, living_room, bedroom
+- detect_objects(color, type): Vision-based object detection
+- grasp_object(object_id): Pick up small objects
+- bring_to_user(): Navigate to user and handover object
+
+Output JSON array of actions.
+"""
+
+USER_PROMPT = "Bring me the red cup from the kitchen"
+```
+
+**3. LLM Response**:
+```json
+[
+  {"action": "navigate", "params": {"location": "kitchen"}},
+  {"action": "detect_objects", "params": {"color": "red", "type": "cup"}},
+  {"action": "grasp_object", "params": {"object_id": "detected_cup_0"}},
+  {"action": "bring_to_user", "params": {}}
+]
+```
+
+**4. Validation**: ✅ All actions valid
+
+**5. Execution**:
+- Nav2 navigates to kitchen waypoint
+- Isaac ROS detects red cup, publishes bounding box
+- MoveIt plans arm trajectory to grasp cup
+- Nav2 returns to user location
+- Arm extends to handover
+
+---
+
+## Advanced: Few-Shot Prompting
+
+**Technique**: Provide examples to guide LLM behavior.
+
+```python
+SYSTEM_PROMPT = """
+You are a robot task planner.
+
+EXAMPLE 1:
+User: "Get me a snack"
+Plan:
+[
+  {"action": "navigate", "params": {"location": "kitchen"}},
+  {"action": "detect_objects", "params": {"object_type": "snack"}},
+  {"action": "grasp_object", "params": {"object_id": "detected_snack_0"}},
+  {"action": "navigate", "params": {"location": "user"}},
+  {"action": "handover", "params": {}}
+]
+
+EXAMPLE 2:
+User: "Find my phone"
+Plan:
+[
+  {"action": "navigate", "params": {"location": "bedroom"}},
+  {"action": "detect_objects", "params": {"object_type": "phone"}},
+  {"action": "speak", "params": {"text": "I found your phone in the bedroom"}}
+]
+
+Now generate a plan for this task:
+"""
+```
+
+**Result**: LLM follows format and structure from examples.
+
+---
+
+## Summary
+
+**Key Takeaways**:
+
+1. **LLMs for Planning**: Translate natural language to robot action sequences
+2. **Prompt Engineering**: System prompts define capabilities, user prompts describe tasks
+3. **Output Formats**: JSON is best for structured robot plans
+4. **Limitations**: Hallucination, grounding errors, latency, safety concerns
+5. **Validation**: Always check plans before execution
+6. **Hybrid Approach**: LLM for high-level, traditional planner for low-level
+7. **ROS 2 Integration**: LLM planner node subscribes to text, publishes action goals
+
+**Next Chapter**: Chapter 3 will integrate Whisper (Chapter 1) and LLM planning (Chapter 2) into a complete VLA pipeline with a capstone project overview.
+
+---
+
+## Troubleshooting
+
+**Problem**: LLM generates invalid actions
+
+**Solutions**:
+1. Be more specific in system prompt about valid actions
+2. Use JSON schema validation
+3. Provide few-shot examples
+
+**Problem**: LLM is too slow (>10 seconds)
+
+**Solutions**:
+1. Use faster model (GPT-3.5 instead of GPT-4)
+2. Cache common plans
+3. Reduce max_tokens parameter
+
+**Problem**: LLM suggests unsafe actions
+
+**Solutions**:
+1. Add explicit safety constraints in prompt
+2. Implement pre-execution validation
+3. Use simulation to test plans before deployment
+
+---
+
+## Further Reading
+
+- [Prompt Engineering Guide](https://www.promptingguide.ai/)
+- [LangChain for Robotics](https://python.langchain.com/docs/use_cases/robotics)
+- [RT-2: Vision-Language-Action Models](https://arxiv.org/abs/2307.15818)
+- [LLMs for Task Planning Survey](https://arxiv.org/abs/2305.15334)
+
+---
+
+**Chapter 2 Complete!** ✅ You've learned LLM-based cognitive planning for robots. Proceed to **Chapter 3: End-to-End VLA Pipeline** to integrate speech, planning, and action.

@@ -1,0 +1,766 @@
+---
+title: "Chapter 2: ROS 2 Services for Request-Response Communication"
+sidebar_position: 3
+description: Learn ROS 2 services, synchronous request-response patterns, service clients and servers, and when to use services vs topics for robot control
+keywords: [ros2, services, request-response, service client, service server, synchronous, rclpy, robotics]
+---
+
+# Chapter 2: ROS 2 Services for Request-Response Communication
+
+## Learning Objectives
+
+By the end of this chapter, you will be able to:
+
+- **Explain** the difference between topics and services in ROS 2
+- **Create** service servers that respond to requests
+- **Create** service clients that send requests and handle responses
+- **Choose** when to use services vs topics for robot tasks
+- **Define** custom service types for specific use cases
+
+**Estimated Time**: 60-90 minutes
+
+---
+
+## Prerequisites
+
+- **Chapter 1**: Understanding of ROS 2 nodes and topics
+- **Python 3**: Classes, functions, and async concepts
+- **ROS 2 Humble**: Installed and sourced
+- **rclpy Basics**: Creating nodes and using timers
+
+---
+
+## What are ROS 2 Services?
+
+**Services** provide synchronous **request-response** communication between nodes. Unlike topics (continuous streaming), services are used for:
+
+- **One-time operations**: "Take a photo now"
+- **Commands with feedback**: "Move to position X,Y - did it succeed?"
+- **Remote procedure calls**: "What's the battery level?"
+- **State queries**: "Is the gripper open?"
+
+### Services vs Topics
+
+| Feature | **Topics** | **Services** |
+|---------|------------|-------------|
+| **Pattern** | Publish-Subscribe | Request-Response |
+| **Communication** | Asynchronous (fire-and-forget) | Synchronous (wait for reply) |
+| **Frequency** | Continuous streaming | One-time or occasional |
+| **Direction** | One-way (publisher → subscriber) | Two-way (client ↔ server) |
+| **Use Cases** | Sensor data, continuous commands | Actions, queries, triggers |
+| **Example** | Camera images at 30Hz | "Capture one photo" |
+
+---
+
+## Service Communication Pattern
+
+```
+┌─────────────────┐                  ┌─────────────────┐
+│  Service Client │                  │  Service Server │
+│      Node       │                  │      Node       │
+│                 │                  │                 │
+│  1. Send        │                  │                 │
+│     Request     │─────────────────▶│  2. Process     │
+│                 │                  │     Request     │
+│                 │                  │                 │
+│  4. Receive     │◀─────────────────│  3. Send        │
+│     Response    │                  │     Response    │
+└─────────────────┘                  └─────────────────┘
+```
+
+**Key Points**:
+- **Client blocks** while waiting for response (synchronous)
+- **Server processes** request and returns result
+- **One-to-one**: Each request gets exactly one response
+- **Timeout possible**: Client can give up if server doesn't respond
+
+---
+
+## Creating Your First Service Server
+
+Let's create a server that adds two integers.
+
+### Service Server Code Example
+
+Create a file `add_two_ints_server.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts
+
+
+class AddTwoIntsServer(Node):
+    def __init__(self):
+        super().__init__('add_two_ints_server')
+
+        # Create service: service name, service type, callback function
+        self.srv = self.create_service(
+            AddTwoInts,
+            'add_two_ints',
+            self.add_two_ints_callback
+        )
+
+        self.get_logger().info('Add Two Ints Server ready')
+
+    def add_two_ints_callback(self, request, response):
+        """
+        Service callback - receives request, returns response
+        """
+        # Access request data
+        a = request.a
+        b = request.b
+
+        # Compute result
+        response.sum = a + b
+
+        self.get_logger().info(f'Request: {a} + {b} = {response.sum}')
+
+        # Return response
+        return response
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = AddTwoIntsServer()
+
+    try:
+        rclpy.spin(node)  # Keep server running
+    except KeyboardInterrupt:
+        pass
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+### Code Breakdown
+
+**Service Creation**:
+```python
+self.srv = self.create_service(
+    AddTwoInts,           # Service type (from example_interfaces)
+    'add_two_ints',       # Service name
+    self.add_two_ints_callback  # Callback function
+)
+```
+
+**Callback Function**:
+```python
+def add_two_ints_callback(self, request, response):
+    response.sum = request.a + request.b
+    return response
+```
+- Takes `request` object (has fields `a` and `b`)
+- Takes `response` object (has field `sum`)
+- Modifies response and returns it
+
+**Service Type**: `AddTwoInts` is a standard service:
+```
+# Request
+int64 a
+int64 b
+---
+# Response
+int64 sum
+```
+
+---
+
+## Creating Your First Service Client
+
+Now create a client to call the service.
+
+### Service Client Code Example
+
+Create a file `add_two_ints_client.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts
+import sys
+
+
+class AddTwoIntsClient(Node):
+    def __init__(self):
+        super().__init__('add_two_ints_client')
+
+        # Create client: service type, service name
+        self.client = self.create_client(AddTwoInts, 'add_two_ints')
+
+        # Wait for service to be available
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Waiting for service...')
+
+    def send_request(self, a, b):
+        """
+        Send request and wait for response
+        """
+        # Create request object
+        request = AddTwoInts.Request()
+        request.a = a
+        request.b = b
+
+        # Call service (blocks until response received)
+        self.get_logger().info(f'Sending request: {a} + {b}')
+        future = self.client.call_async(request)
+
+        # Wait for result
+        rclpy.spin_until_future_complete(self, future)
+
+        if future.result() is not None:
+            response = future.result()
+            self.get_logger().info(f'Result: {response.sum}')
+            return response.sum
+        else:
+            self.get_logger().error('Service call failed')
+            return None
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    # Get numbers from command line
+    if len(sys.argv) < 3:
+        print('Usage: python3 add_two_ints_client.py <a> <b>')
+        return
+
+    a = int(sys.argv[1])
+    b = int(sys.argv[2])
+
+    # Create client and send request
+    client = AddTwoIntsClient()
+    result = client.send_request(a, b)
+
+    client.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+### Code Breakdown
+
+**Client Creation**:
+```python
+self.client = self.create_client(AddTwoInts, 'add_two_ints')
+```
+
+**Wait for Service**:
+```python
+while not self.client.wait_for_service(timeout_sec=1.0):
+    self.get_logger().info('Waiting for service...')
+```
+- Important: Always check if service is available before calling
+
+**Asynchronous Call**:
+```python
+future = self.client.call_async(request)
+rclpy.spin_until_future_complete(self, future)
+result = future.result()
+```
+- `call_async()`: Non-blocking call, returns a `Future` object
+- `spin_until_future_complete()`: Blocks until response arrives
+- `future.result()`: Gets the response
+
+---
+
+## Running the Service
+
+### Terminal 1: Start Server
+
+```bash
+source /opt/ros/humble/setup.bash
+python3 add_two_ints_server.py
+```
+
+**Expected Output**:
+```
+[INFO] [add_two_ints_server]: Add Two Ints Server ready
+```
+
+### Terminal 2: Call Service
+
+```bash
+source /opt/ros/humble/setup.bash
+python3 add_two_ints_client.py 10 25
+```
+
+**Expected Output** (Client):
+```
+[INFO] [add_two_ints_client]: Sending request: 10 + 25
+[INFO] [add_two_ints_client]: Result: 35
+```
+
+**Expected Output** (Server):
+```
+[INFO] [add_two_ints_server]: Request: 10 + 25 = 35
+```
+
+---
+
+## Debugging with ROS 2 Command-Line Tools
+
+### List Available Services
+
+```bash
+ros2 service list
+```
+
+**Output**:
+```
+/add_two_ints
+/add_two_ints_server/describe_parameters
+/add_two_ints_server/get_parameter_types
+...
+```
+
+### Service Type
+
+```bash
+ros2 service type /add_two_ints
+```
+
+**Output**:
+```
+example_interfaces/srv/AddTwoInts
+```
+
+### Call Service from Command Line
+
+You can test services without writing code:
+
+```bash
+ros2 service call /add_two_ints example_interfaces/srv/AddTwoInts "{a: 5, b: 7}"
+```
+
+**Output**:
+```
+requester: making request: example_interfaces.srv.AddTwoInts_Request(a=5, b=7)
+
+response:
+example_interfaces.srv.AddTwoInts_Response(sum=12)
+```
+
+### Service Info
+
+```bash
+ros2 service info /add_two_ints
+```
+
+**Output**:
+```
+Type: example_interfaces/srv/AddTwoInts
+Clients count: 0
+Services count: 1
+```
+
+---
+
+## Common Service Types
+
+ROS 2 provides standard service types for common tasks:
+
+### Trigger Service
+
+**Use**: Simple on/off commands
+
+```python
+from std_srvs.srv import Trigger
+
+# Request: (empty)
+# Response:
+#   bool success
+#   string message
+```
+
+**Example**: Emergency stop, reset system, start recording
+
+### SetBool Service
+
+**Use**: Enable/disable features
+
+```python
+from std_srvs.srv import SetBool
+
+# Request:
+#   bool data
+# Response:
+#   bool success
+#   string message
+```
+
+**Example**: Enable motors, turn on LED, activate mode
+
+### Empty Service
+
+**Use**: Trigger with no data
+
+```python
+from std_srvs.srv import Empty
+
+# Request: (empty)
+# Response: (empty)
+```
+
+**Example**: Ping, acknowledge, simple triggers
+
+---
+
+## Practical Example: Robot Gripper Service
+
+Let's create a realistic service for controlling a robot gripper.
+
+### Gripper Server
+
+Create `gripper_server.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_srvs.srv import SetBool
+
+
+class GripperServer(Node):
+    def __init__(self):
+        super().__init__('gripper_server')
+
+        self.gripper_open = False  # State: gripper starts closed
+
+        self.srv = self.create_service(
+            SetBool,
+            'gripper_control',
+            self.gripper_callback
+        )
+
+        self.get_logger().info('Gripper Server ready (gripper closed)')
+
+    def gripper_callback(self, request, response):
+        """
+        Request.data: True = open, False = close
+        """
+        requested_state = request.data
+
+        if requested_state == self.gripper_open:
+            # Already in requested state
+            response.success = True
+            response.message = f'Gripper already {"open" if self.gripper_open else "closed"}'
+        else:
+            # Change state
+            self.gripper_open = requested_state
+            action = "Opening" if requested_state else "Closing"
+
+            self.get_logger().info(f'{action} gripper...')
+
+            # Simulate hardware command delay
+            import time
+            time.sleep(0.5)  # Simulated motor movement
+
+            response.success = True
+            response.message = f'Gripper {"opened" if self.gripper_open else "closed"} successfully'
+
+        self.get_logger().info(f'Response: {response.message}')
+        return response
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = GripperServer()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+### Gripper Client
+
+Create `gripper_client.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_srvs.srv import SetBool
+import sys
+
+
+class GripperClient(Node):
+    def __init__(self):
+        super().__init__('gripper_client')
+        self.client = self.create_client(SetBool, 'gripper_control')
+
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Waiting for gripper service...')
+
+    def control_gripper(self, open_gripper):
+        """
+        open_gripper: True = open, False = close
+        """
+        request = SetBool.Request()
+        request.data = open_gripper
+
+        action = "Opening" if open_gripper else "Closing"
+        self.get_logger().info(f'{action} gripper...')
+
+        future = self.client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+
+        if future.result() is not None:
+            response = future.result()
+            self.get_logger().info(f'Success: {response.success}')
+            self.get_logger().info(f'Message: {response.message}')
+        else:
+            self.get_logger().error('Service call failed')
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    if len(sys.argv) < 2:
+        print('Usage: python3 gripper_client.py <open|close>')
+        return
+
+    command = sys.argv[1].lower()
+    if command not in ['open', 'close']:
+        print('Command must be "open" or "close"')
+        return
+
+    open_gripper = (command == 'open')
+
+    client = GripperClient()
+    client.control_gripper(open_gripper)
+
+    client.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+### Running the Gripper Example
+
+**Terminal 1**: Start server
+```bash
+python3 gripper_server.py
+```
+
+**Terminal 2**: Open gripper
+```bash
+python3 gripper_client.py open
+```
+
+**Output** (Client):
+```
+[INFO] [gripper_client]: Opening gripper...
+[INFO] [gripper_client]: Success: True
+[INFO] [gripper_client]: Message: Gripper opened successfully
+```
+
+**Output** (Server):
+```
+[INFO] [gripper_server]: Opening gripper...
+[INFO] [gripper_server]: Response: Gripper opened successfully
+```
+
+---
+
+## When to Use Services vs Topics
+
+### Use **Topics** for:
+- ✅ High-frequency sensor data (camera, LiDAR, IMU)
+- ✅ Continuous commands (velocity commands at 50Hz)
+- ✅ Broadcasting to multiple subscribers
+- ✅ Fire-and-forget messages (no response needed)
+
+### Use **Services** for:
+- ✅ One-time commands ("take photo", "save map")
+- ✅ State queries ("get battery level", "is door open?")
+- ✅ Configuration changes ("set PID gains", "switch mode")
+- ✅ Operations requiring confirmation of success/failure
+
+### Example Scenarios:
+
+| Scenario | Use | Why |
+|----------|-----|-----|
+| Send velocity command every 20ms | **Topic** | High frequency, continuous |
+| Ask robot for current pose | **Service** | One-time query, need response |
+| Stream camera images | **Topic** | Continuous data flow |
+| Change camera exposure | **Service** | One-time config, need confirmation |
+| Publish sensor readings | **Topic** | Continuous streaming |
+| Reset odometry | **Service** | One-time command, need success status |
+
+---
+
+## Error Handling and Timeouts
+
+### Client-Side Timeout
+
+Use timeout to avoid waiting forever:
+
+```python
+def send_request_with_timeout(self, a, b):
+    request = AddTwoInts.Request()
+    request.a = a
+    request.b = b
+
+    future = self.client.call_async(request)
+
+    # Wait maximum 5 seconds
+    rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+
+    if future.done():
+        if future.result() is not None:
+            return future.result().sum
+        else:
+            self.get_logger().error('Service call failed')
+            return None
+    else:
+        self.get_logger().error('Service call timed out')
+        future.cancel()
+        return None
+```
+
+### Server-Side Error Handling
+
+Return failure in response:
+
+```python
+def safe_divide_callback(self, request, response):
+    if request.b == 0:
+        response.success = False
+        response.message = "Error: Division by zero"
+        return response
+
+    response.result = request.a / request.b
+    response.success = True
+    response.message = "Success"
+    return response
+```
+
+---
+
+## Practical Exercise: Battery Status Service
+
+**Task**: Create a service that returns battery percentage.
+
+**Requirements**:
+1. Use `Trigger` service type (empty request, returns `success` and `message`)
+2. Server simulates battery level (starts at 100%, decreases by 5% each call)
+3. Server returns battery level in response message
+4. Client prints battery level
+
+**Hints**:
+- Service name: `/battery_status`
+- Use `self.battery_level` to track state
+- Format response: `f"Battery level: {self.battery_level}%"`
+
+**Solution** (try yourself first!):
+
+```python
+# battery_server.py
+import rclpy
+from rclpy.node import Node
+from std_srvs.srv import Trigger
+
+
+class BatteryServer(Node):
+    def __init__(self):
+        super().__init__('battery_server')
+        self.battery_level = 100
+
+        self.srv = self.create_service(
+            Trigger,
+            'battery_status',
+            self.battery_callback
+        )
+
+        self.get_logger().info('Battery Status Server ready')
+
+    def battery_callback(self, request, response):
+        response.success = True
+        response.message = f'Battery level: {self.battery_level}%'
+
+        self.get_logger().info(f'Battery check: {self.battery_level}%')
+
+        # Simulate battery drain
+        self.battery_level = max(0, self.battery_level - 5)
+
+        return response
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = BatteryServer()
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Summary
+
+**Key Takeaways**:
+
+1. **Services**: Synchronous request-response communication for one-time operations
+2. **Service Server**: Creates service, processes requests, returns responses
+3. **Service Client**: Sends requests, waits for responses (with optional timeout)
+4. **Common Types**: `Trigger`, `SetBool`, `Empty`, `AddTwoInts`
+5. **Use Cases**: Commands, queries, configuration changes (not continuous data)
+6. **Tools**: `ros2 service list`, `ros2 service call`, `ros2 service type`
+
+**Next Chapter**: Chapter 3 will cover **URDF (Unified Robot Description Format)** for defining humanoid robot structure, joints, and links.
+
+---
+
+## Troubleshooting
+
+**Problem**: Service call times out
+
+**Solutions**:
+1. Check server is running: `ros2 service list`
+2. Verify service name matches exactly
+3. Check service type: `ros2 service type /service_name`
+4. Increase timeout: `timeout_sec=10.0`
+
+**Problem**: `wait_for_service()` never returns
+
+**Solutions**:
+1. Verify server node is running
+2. Check ROS_DOMAIN_ID matches between client and server
+3. Add timeout: `wait_for_service(timeout_sec=5.0)`
+4. Use `ros2 node list` to verify both nodes are active
+
+**Problem**: Response is `None`
+
+**Solutions**:
+1. Server might have crashed - check server terminal
+2. Service callback might not be returning response
+3. Add error checking in server callback
+
+---
+
+## Further Reading
+
+- [ROS 2 Services Documentation](https://docs.ros.org/en/humble/Tutorials/Beginner-CLI-Tools/Understanding-ROS2-Services/Understanding-ROS2-Services.html)
+- [rclpy Services API](https://docs.ros.org/en/humble/p/rclpy/api/services.html)
+- [Standard Service Types](https://github.com/ros2/common_interfaces/tree/humble/std_srvs)
+
+---
+
+**Chapter 2 Complete!** ✅ You've mastered ROS 2 services for request-response communication. Proceed to **Chapter 3: Humanoid URDF Basics** to learn robot structure definition.

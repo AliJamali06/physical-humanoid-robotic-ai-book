@@ -1,0 +1,263 @@
+# Nav2 Local Planner Configuration (DWB - Dynamic Window Approach)
+# Configures the local planner for generating dynamic obstacle-avoiding trajectories
+# and executing the global plan.
+#
+# Prerequisites:
+# - Nav2 installed: sudo apt install ros-humble-navigation2
+# - Global planner providing /plan topic
+# - Local cost map configured with obstacle layer
+#
+# Usage:
+#   Include this file in nav2_params.yaml under 'controller_server' namespace
+
+controller_server:
+  ros__parameters:
+    # =========================================================================
+    # Controller Server Configuration
+    # =========================================================================
+
+    # Controller frequency (how often to generate new velocity commands)
+    # Higher = smoother control, higher CPU usage
+    # Humanoid robots: 10-20 Hz (matches gait cycle timing)
+    controller_frequency: 20.0  # Hz
+
+    # Plugin type for local planner/controller
+    # Options: "dwb_core::DWBLocalPlanner" (default),
+    #          "teb_local_planner::TebLocalPlannerROS" (smoother, slower)
+    controller_plugins: ["FollowPath"]
+
+    # =========================================================================
+    # DWB Local Planner Configuration
+    # =========================================================================
+
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+
+      # ---------------------------------------------------------------------
+      # Velocity Limits (Humanoid Robot)
+      # ---------------------------------------------------------------------
+
+      # Linear velocity limits (m/s)
+      min_vel_x: -0.2  # Max backward velocity (negative = reverse)
+      max_vel_x: 0.5   # Max forward velocity
+      min_vel_y: 0.0   # No lateral motion (non-holonomic robot)
+      max_vel_y: 0.0
+
+      # Angular velocity limits (rad/s)
+      min_speed_xy: 0.0  # Minimum translational speed
+      max_vel_theta: 1.0  # Max rotation rate (1.0 rad/s ≈ 57°/s)
+      min_vel_theta: -1.0  # Min rotation rate (negative = clockwise)
+
+      # Speed limit (m/s) - overall velocity magnitude cap
+      max_speed_xy: 0.5
+
+      # ---------------------------------------------------------------------
+      # Acceleration Limits (Humanoid Stability)
+      # ---------------------------------------------------------------------
+
+      # Linear acceleration limits (m/s²)
+      # Lower values = smoother, safer for bipedal balance
+      acc_lim_x: 0.3   # Forward/backward acceleration
+      acc_lim_y: 0.0   # No lateral acceleration
+      decel_lim_x: -0.3  # Braking deceleration (negative)
+
+      # Angular acceleration limit (rad/s²)
+      acc_lim_theta: 1.5  # Rotation acceleration
+
+      # ---------------------------------------------------------------------
+      # Trajectory Simulation Parameters
+      # ---------------------------------------------------------------------
+
+      # Time horizon for trajectory simulation (seconds)
+      # Larger = plans farther ahead, slower computation
+      # Humanoid robots: 1.0-1.5s (matches footstep planning horizon)
+      sim_time: 1.5
+
+      # Time step for simulation (seconds)
+      # Smaller = more accurate, slower computation
+      sim_granularity: 0.05  # 50ms steps
+
+      # Angular simulation granularity (radians)
+      angular_sim_granularity: 0.025
+
+      # Velocity sampling (how many candidate trajectories to evaluate)
+      vx_samples: 10      # Sample 10 forward velocities (0 to max_vel_x)
+      vy_samples: 1       # No lateral motion
+      vtheta_samples: 20  # Sample 20 angular velocities (-max to +max)
+
+      # Linear velocity samples distribution
+      # true: Concentrate samples near current velocity
+      # false: Uniform distribution
+      use_linear_velocity_scaling: false
+
+      # ---------------------------------------------------------------------
+      # Goal Tolerance (When to Stop)
+      # ---------------------------------------------------------------------
+
+      # XY position tolerance (meters)
+      # Robot stops when within this distance of goal
+      xy_goal_tolerance: 0.15
+
+      # Yaw (orientation) tolerance (radians)
+      # Robot stops when within this angle of goal orientation
+      yaw_goal_tolerance: 0.1  # ~6 degrees
+
+      # Latched goal (stop at goal, don't overshoot)
+      latch_xy_goal_tolerance: true
+
+      # ---------------------------------------------------------------------
+      # Cost Function Weights (Trajectory Scoring)
+      # ---------------------------------------------------------------------
+
+      # Path alignment cost (follow global plan)
+      # Higher = stick closer to global path
+      PathAlign:
+        scale: 32.0
+        forward_point_distance: 0.325
+
+      # Goal alignment cost (orient toward goal)
+      # Higher = prioritize aligning with goal orientation
+      GoalAlign:
+        scale: 24.0
+        forward_point_distance: 0.325
+
+      # Path distance cost (stay near global path)
+      # Higher = penalize deviations from path
+      PathDist:
+        scale: 32.0
+
+      # Goal distance cost (make progress toward goal)
+      # Higher = prioritize getting closer to goal
+      GoalDist:
+        scale: 24.0
+
+      # Obstacle footprint cost (avoid collisions)
+      # Higher = stay farther from obstacles
+      # Lower = more aggressive (get closer to obstacles)
+      ObstacleFootprint:
+        scale: 0.02
+        sum_scores: false
+
+      # Prefer forward motion (penalize reverse)
+      PreferForward:
+        scale: 5.0
+        penalty: 2.0
+
+      # Rotate to goal cost (turn to face goal before approaching)
+      # Useful for aligning before final approach
+      RotateToGoal:
+        scale: 10.0
+        slowing_factor: 5.0
+        lookahead_time: 0.5
+
+      # ---------------------------------------------------------------------
+      # Obstacle Avoidance Parameters
+      # ---------------------------------------------------------------------
+
+      # Minimum distance to obstacles (meters)
+      # Trajectories closer than this are rejected
+      min_obstacle_dist: 0.05
+
+      # Footprint model for collision checking
+      # "point" (single point), "line" (linear), "two_circles", "polygon"
+      footprint_model: "polygon"  # Use robot's polygon footprint
+
+      # Prune global plan (remove passed waypoints)
+      # Reduces memory usage for long paths
+      prune_plan: true
+      prune_distance: 1.5  # Remove waypoints >1.5m behind robot
+
+      # Transform tolerance (TF lookup)
+      transform_tolerance: 0.5
+
+      # ---------------------------------------------------------------------
+      # Path Following Behavior
+      # ---------------------------------------------------------------------
+
+      # Shorten transformed global plan (reduce lookahead distance)
+      # Useful for environments with many turns
+      shorten_transformed_plan: true
+      max_shorten_transformed_plan_dist: 1.0
+
+      # Forward prune distance (ignore waypoints too close)
+      forward_prune_distance: 0.5
+
+      # Debug publishing (visualize scored trajectories in RViz)
+      publish_cost_grid_pc: false
+      publish_trajectories: true
+      publish_local_plan: true
+      publish_transformed_plan: true
+
+    # =========================================================================
+    # Goal Checker Configuration
+    # =========================================================================
+
+    # Goal checker plugin (determines when goal is reached)
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15  # Must match DWB tolerance
+      yaw_goal_tolerance: 0.1
+      stateful: true  # Remember if goal was reached
+
+    # =========================================================================
+    # Progress Checker (Detect if Robot is Stuck)
+    # =========================================================================
+
+    # Progress checker plugin (monitors forward progress)
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.3  # Must move >0.3m within timeout
+      movement_time_allowance: 10.0  # seconds (10s timeout)
+
+
+# =============================================================================
+# Configuration Notes
+# =============================================================================
+
+# Tuning for Different Robot Types:
+#
+# HUMANOID ROBOTS (bipedal, slow, unstable):
+#   - max_vel_x: 0.3-0.5  # Walk speed
+#   - acc_lim_x: 0.2-0.3  # Gentle acceleration (balance)
+#   - sim_time: 1.0-1.5  # Match footstep planning horizon
+#   - xy_goal_tolerance: 0.15-0.25  # Larger tolerance (harder to stop precisely)
+#
+# WHEELED ROBOTS (fast, stable):
+#   - max_vel_x: 1.0-2.0  # High speed
+#   - acc_lim_x: 1.0-2.0  # Fast acceleration
+#   - sim_time: 1.5-2.5  # Plan farther ahead
+#   - xy_goal_tolerance: 0.05-0.1  # Precise stopping
+#
+# CROWDED ENVIRONMENTS (many obstacles):
+#   - ObstacleFootprint.scale: 0.05  # Higher penalty for proximity
+#   - min_obstacle_dist: 0.1  # Stay farther from obstacles
+#   - vx_samples: 15  # More velocity samples (better obstacle avoidance)
+#   - vtheta_samples: 30
+#
+# NARROW PASSAGES (tight spaces):
+#   - ObstacleFootprint.scale: 0.01  # Lower penalty (more aggressive)
+#   - PathAlign.scale: 48.0  # Stick closely to global path
+#   - max_vel_x: 0.3  # Slower speed for precision
+#
+# OPEN SPACES (few obstacles):
+#   - max_vel_x: 1.0  # Higher speed
+#   - PathDist.scale: 16.0  # Less strict path following
+#   - vx_samples: 8  # Fewer samples (faster computation)
+
+# Cost Function Weight Guidelines:
+#   - PathAlign + PathDist: 32-48 = Follow global plan closely
+#   - GoalAlign + GoalDist: 24-32 = Prioritize reaching goal
+#   - ObstacleFootprint: 0.01-0.05 = Obstacle avoidance aggressiveness
+#   - PreferForward: 5-10 = Penalize reverse motion
+#   - Total weight sum should be balanced (no single cost dominates)
+
+# Debugging Tips:
+#   - Set publish_trajectories: true to visualize scored trajectories in RViz
+#   - Watch /local_plan topic to see immediate trajectory
+#   - If robot oscillates: Increase PathAlign.scale, reduce GoalDist.scale
+#   - If robot ignores obstacles: Increase ObstacleFootprint.scale
+#   - If robot moves too slowly: Increase max_vel_x, reduce goal tolerances
+
+# References:
+# [Nav2Docs] Nav2 Controller Server: https://navigation.ros.org/configuration/packages/configuring-controller-server.html
+# [Fox1997] D. Fox et al., "The Dynamic Window Approach to Collision Avoidance," IEEE RAM, 1997.

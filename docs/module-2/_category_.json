@@ -1,0 +1,9 @@
+{
+  "label": "Module 2: Digital Twin (Gazebo & Unity)",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn physics simulation with Gazebo, realistic rendering with Unity, and sensor simulation (LiDAR, depth cameras, IMU) for humanoid robots."
+  },
+  "collapsed": false
+}

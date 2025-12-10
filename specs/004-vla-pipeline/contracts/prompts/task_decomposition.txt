@@ -1,0 +1,259 @@
+# Task Decomposition Prompt Template
+
+## Purpose
+This prompt guides the LLM to break down high-level natural language commands into structured sequences of robot sub-tasks.
+
+## Usage
+Append this template to the system prompt when processing complex multi-step commands that require explicit decomposition reasoning.
+
+---
+
+## Task Decomposition Instructions
+
+Given the user command: **"{USER_COMMAND}"**
+
+Follow this structured reasoning process to decompose the task:
+
+### Step 1: Goal Identification
+**What is the ultimate objective?**
+- Identify the end state the user wants to achieve
+- Distinguish between explicit goals ("bring me a drink") and implicit goals ("I'm thirsty" → bring drink)
+
+Example:
+- Command: "Bring me a drink from the kitchen"
+- Goal: User receives a drink in their hand
+
+### Step 2: Precondition Analysis
+**What must be true before starting?**
+- Robot location and state
+- Object locations (known or must be detected)
+- Environmental constraints (doors open, paths clear)
+
+Example:
+- Preconditions:
+  - Robot is operational and in home environment
+  - Kitchen is accessible
+  - At least one drink is present in kitchen
+
+### Step 3: Sub-Goal Decomposition
+**What intermediate objectives are needed?**
+- Break goal into sequential milestones
+- Each sub-goal should map to 1-3 robot actions
+- Consider: Navigation, Perception, Manipulation, Handover
+
+Example:
+- Sub-goal 1: Robot is in kitchen
+- Sub-goal 2: Drink is detected and localized
+- Sub-goal 3: Drink is grasped
+- Sub-goal 4: Robot is at user location
+- Sub-goal 5: Drink is transferred to user
+
+### Step 4: Action Grounding
+**Map each sub-goal to specific robot actions:**
+- Sub-goal 1 → `navigate_to_pose("kitchen", x, y, theta)`
+- Sub-goal 2 → `detect_objects(["cup", "bottle", "glass"], 0.8)`
+- Sub-goal 3 → `grasp_object("$detected_object_0", grasp_force)`
+- Sub-goal 4 → `navigate_to_pose("user", x, y, theta)`
+- Sub-goal 5 → `handover_object("user_confirmation")`
+
+### Step 5: Dependency Ordering
+**Which steps must happen before others?**
+- Create directed acyclic graph (DAG) of dependencies
+- Step N can only start after its dependencies complete
+
+Example:
+```
+Step 1: navigate_to_pose("kitchen")      [no dependencies]
+Step 2: detect_objects([...])            [depends on step 1]
+Step 3: grasp_object(...)                [depends on step 2]
+Step 4: navigate_to_pose("user")         [depends on step 3]
+Step 5: handover_object(...)             [depends on step 4]
+```
+
+### Step 6: Parameter Specification
+**Fill in concrete parameter values:**
+- Use known location coordinates from robot's map
+- Set appropriate confidence thresholds (0.8 for detection)
+- Choose grasp forces based on object fragility
+- Estimate realistic execution durations
+
+Example:
+- `navigate_to_pose`: location="kitchen", x=5.0, y=3.0, theta=0.0, duration=30s
+- `detect_objects`: classes=["cup","bottle","glass"], min_confidence=0.8, duration=3s
+- `grasp_object`: object_id="$detected_object_0", grasp_force=5.0, duration=10s
+
+### Step 7: Feasibility Validation
+**Check if plan is executable:**
+- All actions exist in robot's capability set?
+- Parameters within valid ranges (speed, force, reach)?
+- No circular dependencies?
+- Total duration reasonable (<5 minutes for simple tasks)?
+
+Example Validation:
+- ✅ All actions (navigate, detect, grasp, handover) are available
+- ✅ Kitchen coordinates (5.0, 3.0) are within workspace
+- ✅ Grasp force 5.0 N is within 0.0-10.0 N limit
+- ✅ No circular dependencies
+- ✅ Total duration ~78 seconds is reasonable
+
+### Step 8: Error Anticipation
+**What could go wrong? How to handle failures?**
+- Detection failure: No drink found → Note in plan, suggest user verification
+- Grasp failure: Object slips → Plan should be retryable
+- Navigation failure: Path blocked → Note reliance on Nav2 obstacle avoidance
+
+Example Notes:
+```
+"Assumes at least one drink is detectable in kitchen. If detection fails (step 2),
+plan cannot proceed. Recommend user verify drink is visible and within 0.3-3.0m of
+expected location. Grasp may fail if object is too large (>gripper width) or too
+heavy (>5kg)."
+```
+
+---
+
+## Example Decomposition
+
+### User Command
+"Set the table for dinner"
+
+### Decomposition Process
+
+**Step 1: Goal Identification**
+- End state: Dining table has plates, utensils, and glasses arranged for meal
+
+**Step 2: Precondition Analysis**
+- Preconditions:
+  - Dining items (plates, forks, knives, glasses) are available
+  - Dining table location is known
+  - Items are within robot's reach (<0.8m height)
+
+**Step 3: Sub-Goal Decomposition**
+- Sub-goal 1: Locate dining items (kitchen counter or cabinet)
+- Sub-goal 2: Transport first item (plate) to table
+- Sub-goal 3: Transport second item (fork) to table
+- Sub-goal 4: Transport third item (knife) to table
+- Sub-goal 5: Transport fourth item (glass) to table
+
+**Step 4: Action Grounding**
+For each item (plate, fork, knife, glass):
+1. Navigate to item location
+2. Detect item
+3. Grasp item
+4. Navigate to table
+5. Place item at designated position
+
+**Step 5: Dependency Ordering**
+```
+Items can be transported sequentially (each depends on previous completing)
+OR in parallel if robot can carry multiple items (not assumed)
+```
+
+**Step 6: Parameter Specification**
+```json
+{
+  "task": "Set the table for dinner",
+  "steps": [
+    {"step_id": 1, "action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}, "dependencies": [], "expected_duration_s": 20},
+    {"step_id": 2, "action": "detect_objects", "params": {"classes": ["plate"], "min_confidence": 0.8}, "dependencies": [1], "expected_duration_s": 3},
+    {"step_id": 3, "action": "grasp_object", "params": {"object_id": "$detected_object_0", "grasp_force": 5.0}, "dependencies": [2], "expected_duration_s": 10},
+    {"step_id": 4, "action": "navigate_to_pose", "params": {"location": "dining_table", "x": 3.5, "y": 4.0, "theta": 0.0}, "dependencies": [3], "expected_duration_s": 20},
+    {"step_id": 5, "action": "place_object", "params": {"location": "table", "x": 0.0, "y": 0.0, "z": 0.0}, "dependencies": [4], "expected_duration_s": 8},
+    {"step_id": 6, "action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}, "dependencies": [5], "expected_duration_s": 20},
+    {"step_id": 7, "action": "detect_objects", "params": {"classes": ["fork"], "min_confidence": 0.8}, "dependencies": [6], "expected_duration_s": 3},
+    {"step_id": 8, "action": "grasp_object", "params": {"object_id": "$detected_object_0", "grasp_force": 3.0}, "dependencies": [7], "expected_duration_s": 10},
+    {"step_id": 9, "action": "navigate_to_pose", "params": {"location": "dining_table", "x": 3.5, "y": 4.0, "theta": 0.0}, "dependencies": [8], "expected_duration_s": 20},
+    {"step_id": 10, "action": "place_object", "params": {"location": "table", "x": 0.1, "y": 0.0, "z": 0.0}, "dependencies": [9], "expected_duration_s": 8}
+  ],
+  "notes": "Simplified plan shows transporting 2 items (plate and fork). Full implementation would repeat for knife and glass. Total estimated duration for 4 items: ~240 seconds (4 minutes). Assumes items are detectable and graspable. If detection fails, user must verify items are visible."
+}
+```
+
+**Step 7: Feasibility Validation**
+- ✅ All actions are available
+- ✅ Coordinates within workspace
+- ✅ Grasp forces appropriate (5.0N for plate, 3.0N for fork)
+- ⚠️ Total duration ~4 minutes (acceptable but lengthy)
+
+**Step 8: Error Anticipation**
+- Detection may fail if items are stacked or occluded → Note in plan
+- Multiple trips required (robot can only carry one item at a time) → Explain in notes
+- Placement precision limited (±5cm) → Acceptable for dining setup
+
+---
+
+## Decomposition Patterns
+
+### Pattern 1: Fetch-and-Deliver
+**Structure**: Navigate → Detect → Grasp → Navigate → Handover
+**Use Cases**: "Bring me X", "Get the Y from Z"
+
+### Pattern 2: Inspection
+**Structure**: Navigate → Detect → Report
+**Use Cases**: "Check if there's a cup in the kitchen", "Show me what's on the table"
+
+### Pattern 3: Placement
+**Structure**: (Assume object grasped) → Navigate → Place
+**Use Cases**: "Put this on the counter", "Place the book on the shelf"
+
+### Pattern 4: Multi-Step Navigation
+**Structure**: Navigate → Open Door → Navigate → ...
+**Use Cases**: "Go to the bedroom" (requires passing through doorway)
+
+### Pattern 5: Conditional Execution
+**Structure**: Detect → (if found) Grasp, (if not found) Report Failure
+**Use Cases**: "Bring me a drink if there is one"
+
+---
+
+## Common Pitfalls to Avoid
+
+❌ **Over-simplification**: Missing necessary perception steps
+   - Bad: Navigate → Grasp (how does robot know what to grasp?)
+   - Good: Navigate → Detect → Grasp
+
+❌ **Under-specification**: Parameters missing or vague
+   - Bad: `navigate_to_pose(location="somewhere")`
+   - Good: `navigate_to_pose(location="kitchen", x=5.0, y=3.0, theta=0.0)`
+
+❌ **Circular dependencies**: Step A depends on Step B, Step B depends on Step A
+   - Bad: Step 1 depends on [2], Step 2 depends on [1]
+   - Good: Linear or DAG dependency structure
+
+❌ **Ignoring constraints**: Violating robot physical limits
+   - Bad: `grasp_object(grasp_force=50.0)` (exceeds 10.0 N limit)
+   - Good: `grasp_object(grasp_force=8.0)`
+
+❌ **Unrealistic durations**: Estimating 2 seconds for 30-meter navigation
+   - Bad: `navigate_to_pose(..., expected_duration_s=2)`
+   - Good: `navigate_to_pose(..., expected_duration_s=30)`
+
+---
+
+## Output Format Reminder
+
+Always output the decomposition as valid JSON:
+
+```json
+{
+  "task": "<verbatim user command>",
+  "steps": [
+    {
+      "step_id": <integer>,
+      "action": "<action_name>",
+      "params": {<parameters>},
+      "dependencies": [<step_ids>],
+      "expected_duration_s": <integer>
+    }
+  ],
+  "notes": "<reasoning, assumptions, caveats>"
+}
+```
+
+---
+
+## Now Decompose
+
+User Command: **"{USER_COMMAND}"**
+
+Apply the 8-step decomposition process above and output the structured plan as JSON.

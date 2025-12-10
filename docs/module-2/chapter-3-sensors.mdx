@@ -1,0 +1,775 @@
+---
+title: "Chapter 3: Sensor Simulation (LiDAR, Depth, IMU)"
+sidebar_position: 4
+description: Learn to simulate sensors (LiDAR, depth cameras, IMU) in Gazebo and Unity for humanoid robots, including noise models and ROS 2 integration
+keywords: [sensors, lidar, depth camera, imu, simulation, gazebo, unity, ros2, sensor noise, point cloud]
+---
+
+# Chapter 3: Sensor Simulation (LiDAR, Depth, IMU)
+
+## Learning Objectives
+
+By the end of this chapter, you will be able to:
+
+- **Configure** LiDAR sensors in Gazebo and Unity for 2D/3D scanning
+- **Simulate** depth cameras (RGB-D) with realistic noise models
+- **Add** IMU sensors for orientation and acceleration measurement
+- **Process** sensor data in ROS 2 (point clouds, images, IMU messages)
+- **Calibrate** simulated sensors to match real hardware
+- **Visualize** sensor data using RViz2 and custom tools
+
+**Estimated Time**: 75-90 minutes
+
+---
+
+## Prerequisites
+
+- **Chapters 1-2**: Gazebo and Unity basics
+- **Module 1**: ROS 2 topics, URDF, and robot description
+- **Sensor Basics**: Understanding of LiDAR, cameras, and IMU principles
+- **RViz2**: Familiarity with visualization tools
+
+---
+
+## Why Simulate Sensors?
+
+**Algorithm Development**: Test perception without hardware
+- SLAM (Simultaneous Localization and Mapping)
+- Obstacle detection
+- Sensor fusion
+
+**Edge Case Testing**: Create difficult scenarios
+- Low light conditions
+- Fog, rain, dust
+- Sensor failures
+
+**Synthetic Data Generation**: Train ML models
+- Object detection datasets
+- Segmentation masks
+- Depth estimation
+
+**Cost Savings**: No need for expensive sensors during development
+- LiDAR: $1,000-$100,000
+- Depth cameras: $200-$500
+- IMU: $50-$2,000
+
+---
+
+## Sensor Overview
+
+### Common Robot Sensors
+
+| Sensor | **Purpose** | **Output** | **Frequency** |
+|--------|-------------|------------|---------------|
+| **LiDAR** | Distance measurement (laser) | Point cloud | 5-40 Hz |
+| **Depth Camera** | RGB + depth image | Image + depth map | 15-60 Hz |
+| **IMU** | Orientation, acceleration | 6-9 DOF data | 100-1000 Hz |
+| **RGB Camera** | Visual information | Color images | 15-120 Hz |
+| **GPS** | Global position | Lat/long coordinates | 1-10 Hz |
+
+**Focus**: LiDAR, Depth Camera, IMU (most critical for humanoid navigation and perception)
+
+---
+
+## LiDAR Simulation
+
+### LiDAR Basics
+
+**LiDAR (Light Detection and Ranging)** measures distance using laser pulses:
+
+```
+Sensor → Laser Pulse → Object → Reflected Light → Sensor
+Distance = (Speed of Light × Time) / 2
+```
+
+**Types**:
+- **2D LiDAR**: Single horizontal plane (e.g., SICK, Hokuyo)
+- **3D LiDAR**: Multiple layers or rotating (e.g., Velodyne, Ouster)
+
+**Key Parameters**:
+- **Range**: Maximum distance (1m - 200m)
+- **FOV (Field of View)**: Horizontal/vertical coverage (180°, 360°)
+- **Resolution**: Angular spacing (0.25° - 1°)
+- **Frequency**: Scan rate (5-40 Hz)
+
+---
+
+## Adding LiDAR to URDF (Gazebo)
+
+### 2D LiDAR Example
+
+```xml
+<!-- LiDAR link -->
+<link name="lidar_link">
+  <visual>
+    <geometry>
+      <cylinder radius="0.05" length="0.07"/>
+    </geometry>
+    <material name="black">
+      <color rgba="0.1 0.1 0.1 1.0"/>
+    </material>
+  </visual>
+  <collision>
+    <geometry>
+      <cylinder radius="0.05" length="0.07"/>
+    </geometry>
+  </collision>
+  <inertial>
+    <mass value="0.2"/>
+    <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+  </inertial>
+</link>
+
+<joint name="lidar_joint" type="fixed">
+  <parent link="torso"/>
+  <child link="lidar_link"/>
+  <origin xyz="0.1 0 0.6" rpy="0 0 0"/>  <!-- Front of torso, top -->
+</joint>
+
+<!-- Gazebo LiDAR Plugin -->
+<gazebo reference="lidar_link">
+  <sensor name="lidar" type="ray">
+    <always_on>true</always_on>
+    <update_rate>10</update_rate>  <!-- 10 Hz -->
+    <visualize>true</visualize>
+
+    <ray>
+      <scan>
+        <horizontal>
+          <samples>360</samples>  <!-- Number of rays -->
+          <resolution>1.0</resolution>
+          <min_angle>-3.14159</min_angle>  <!-- -180 degrees -->
+          <max_angle>3.14159</max_angle>   <!-- +180 degrees -->
+        </horizontal>
+      </scan>
+
+      <range>
+        <min>0.1</min>  <!-- Minimum distance (m) -->
+        <max>30.0</max>  <!-- Maximum distance (m) -->
+        <resolution>0.01</resolution>  <!-- Range resolution (m) -->
+      </range>
+
+      <noise>
+        <type>gaussian</type>
+        <mean>0.0</mean>
+        <stddev>0.01</stddev>  <!-- 1cm noise -->
+      </noise>
+    </ray>
+
+    <!-- ROS 2 Plugin -->
+    <plugin name="scan_plugin" filename="libgazebo_ros_ray_sensor.so">
+      <ros>
+        <namespace>/humanoid</namespace>
+        <argument>~/out:=scan</argument>
+      </ros>
+      <output_type>sensor_msgs/LaserScan</output_type>
+      <frame_name>lidar_link</frame_name>
+    </plugin>
+  </sensor>
+</gazebo>
+```
+
+**Published Topic**: `/humanoid/scan` (`sensor_msgs/LaserScan`)
+
+### 3D LiDAR Example
+
+```xml
+<ray>
+  <scan>
+    <horizontal>
+      <samples>1024</samples>
+      <resolution>1.0</resolution>
+      <min_angle>-3.14159</min_angle>
+      <max_angle>3.14159</max_angle>
+    </horizontal>
+    <vertical>
+      <samples>16</samples>  <!-- 16 layers -->
+      <resolution>1.0</resolution>
+      <min_angle>-0.2618</min_angle>  <!-- -15 degrees -->
+      <max_angle>0.2618</max_angle>   <!-- +15 degrees -->
+    </vertical>
+  </scan>
+  <range>
+    <min>0.5</min>
+    <max>100.0</max>
+  </range>
+</ray>
+
+<plugin name="lidar_plugin" filename="libgazebo_ros_ray_sensor.so">
+  <output_type>sensor_msgs/PointCloud2</output_type>
+  <frame_name>lidar_link</frame_name>
+</plugin>
+```
+
+**Published Topic**: `/humanoid/points` (`sensor_msgs/PointCloud2`)
+
+---
+
+## Processing LiDAR Data in ROS 2
+
+### Visualize in RViz2
+
+```bash
+# Launch RViz2
+rviz2
+
+# Add LaserScan display
+# - Fixed Frame: "lidar_link"
+# - Topic: "/humanoid/scan"
+# - Size: 0.05
+# - Color: Intensity or Flat Color
+```
+
+### Subscribe to LaserScan
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+import numpy as np
+
+
+class LidarProcessor(Node):
+    def __init__(self):
+        super().__init__('lidar_processor')
+        self.subscription = self.create_subscription(
+            LaserScan,
+            '/humanoid/scan',
+            self.scan_callback,
+            10
+        )
+
+    def scan_callback(self, msg):
+        """
+        Process LaserScan data
+        """
+        ranges = np.array(msg.ranges)
+
+        # Filter invalid readings
+        valid_ranges = ranges[(ranges >= msg.range_min) & (ranges <= msg.range_max)]
+
+        # Find minimum distance (closest obstacle)
+        if len(valid_ranges) > 0:
+            min_distance = np.min(valid_ranges)
+            self.get_logger().info(f'Closest obstacle: {min_distance:.2f}m')
+
+            # Safety check
+            if min_distance < 0.5:
+                self.get_logger().warn('Obstacle too close! Emergency stop!')
+        else:
+            self.get_logger().warn('No valid LiDAR readings')
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = LidarProcessor()
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Depth Camera Simulation
+
+### Depth Camera Basics
+
+**RGB-D Camera** captures:
+- **RGB Image**: Color image (like normal camera)
+- **Depth Image**: Distance to each pixel (meters)
+
+**Technologies**:
+- **Structured Light**: Projects pattern, measures distortion (Intel RealSense D400 series)
+- **Time-of-Flight**: Measures light travel time (Microsoft Kinect, Intel RealSense L515)
+- **Stereo Vision**: Two cameras, computes disparity (ZED, OAK-D)
+
+---
+
+## Adding Depth Camera to URDF (Gazebo)
+
+```xml
+<!-- Camera link -->
+<link name="camera_link">
+  <visual>
+    <geometry>
+      <box size="0.02 0.1 0.03"/>
+    </geometry>
+  </visual>
+  <collision>
+    <geometry>
+      <box size="0.02 0.1 0.03"/>
+    </geometry>
+  </collision>
+  <inertial>
+    <mass value="0.1"/>
+    <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+  </inertial>
+</link>
+
+<joint name="camera_joint" type="fixed">
+  <parent link="head"/>
+  <child link="camera_link"/>
+  <origin xyz="0.1 0 0" rpy="0 0 0"/>
+</joint>
+
+<!-- Gazebo Depth Camera Plugin -->
+<gazebo reference="camera_link">
+  <sensor name="depth_camera" type="depth">
+    <update_rate>30</update_rate>
+    <camera>
+      <horizontal_fov>1.5708</horizontal_fov>  <!-- 90 degrees -->
+      <image>
+        <width>640</width>
+        <height>480</height>
+        <format>R8G8B8</format>
+      </image>
+      <clip>
+        <near>0.1</near>
+        <far>10.0</far>
+      </clip>
+
+      <noise>
+        <type>gaussian</type>
+        <mean>0.0</mean>
+        <stddev>0.007</stddev>
+      </noise>
+    </camera>
+
+    <!-- Depth-specific settings -->
+    <plugin name="depth_camera_plugin" filename="libgazebo_ros_camera.so">
+      <ros>
+        <namespace>/humanoid</namespace>
+        <argument>image_raw:=camera/color/image_raw</argument>
+        <argument>depth/image_raw:=camera/depth/image_raw</argument>
+        <argument>depth/points:=camera/depth/points</argument>
+        <argument>camera_info:=camera/color/camera_info</argument>
+        <argument>depth/camera_info:=camera/depth/camera_info</argument>
+      </ros>
+
+      <frame_name>camera_link</frame_name>
+      <min_depth>0.1</min_depth>
+      <max_depth>10.0</max_depth>
+    </plugin>
+  </sensor>
+</gazebo>
+```
+
+**Published Topics**:
+- `/humanoid/camera/color/image_raw`: RGB image (`sensor_msgs/Image`)
+- `/humanoid/camera/depth/image_raw`: Depth image (`sensor_msgs/Image`, encoding: 32FC1)
+- `/humanoid/camera/depth/points`: Point cloud (`sensor_msgs/PointCloud2`)
+- `/humanoid/camera/color/camera_info`: Camera calibration (`sensor_msgs/CameraInfo`)
+
+---
+
+## Processing Depth Data in ROS 2
+
+### Visualize Depth Image
+
+```bash
+# RGB image
+ros2 run rqt_image_view rqt_image_view /humanoid/camera/color/image_raw
+
+# Depth image (16-bit grayscale)
+ros2 run rqt_image_view rqt_image_view /humanoid/camera/depth/image_raw
+
+# Point cloud (RViz2)
+rviz2
+# Add PointCloud2 display, topic: /humanoid/camera/depth/points
+```
+
+### Depth Image Processing
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import cv2
+import numpy as np
+
+
+class DepthProcessor(Node):
+    def __init__(self):
+        super().__init__('depth_processor')
+        self.bridge = CvBridge()
+
+        self.subscription = self.create_subscription(
+            Image,
+            '/humanoid/camera/depth/image_raw',
+            self.depth_callback,
+            10
+        )
+
+    def depth_callback(self, msg):
+        """
+        Process depth image
+        """
+        # Convert ROS Image to OpenCV
+        depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='32FC1')
+
+        # Find closest point
+        min_distance = np.nanmin(depth_image)
+        max_distance = np.nanmax(depth_image)
+
+        self.get_logger().info(f'Depth range: {min_distance:.2f}m - {max_distance:.2f}m')
+
+        # Visualize (normalize to 0-255 for display)
+        depth_display = cv2.normalize(depth_image, None, 0, 255, cv2.NORM_MINMAX)
+        depth_display = np.uint8(depth_display)
+        depth_colormap = cv2.applyColorMap(depth_display, cv2.COLORMAP_JET)
+
+        cv2.imshow('Depth Camera', depth_colormap)
+        cv2.waitKey(1)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = DepthProcessor()
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## IMU Simulation
+
+### IMU Basics
+
+**IMU (Inertial Measurement Unit)** measures:
+- **Linear Acceleration**: 3-axis (x, y, z) in m/s²
+- **Angular Velocity**: 3-axis (roll, pitch, yaw rates) in rad/s
+- **Orientation**: Quaternion (some IMUs, using sensor fusion)
+
+**Use Cases**:
+- Balance control for humanoid walking
+- Detect falls
+- Dead reckoning (position estimation when GPS unavailable)
+- Sensor fusion (combine with odometry, GPS)
+
+---
+
+## Adding IMU to URDF (Gazebo)
+
+```xml
+<!-- IMU is typically placed at robot's center of mass (torso) -->
+<gazebo reference="torso">
+  <sensor name="imu_sensor" type="imu">
+    <always_on>true</always_on>
+    <update_rate>100</update_rate>  <!-- 100 Hz -->
+
+    <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+      <ros>
+        <namespace>/humanoid</namespace>
+        <argument>~/out:=imu</argument>
+      </ros>
+
+      <frame_name>torso</frame_name>
+      <initial_orientation_as_reference>false</initial_orientation_as_reference>
+
+      <!-- Noise parameters (realistic IMU noise) -->
+      <noise>
+        <!-- Accelerometer noise -->
+        <accel>
+          <mean>0.0</mean>
+          <stddev>0.017</stddev>  <!-- 0.017 m/s² noise -->
+          <bias_mean>0.1</bias_mean>
+          <bias_stddev>0.001</bias_stddev>
+        </accel>
+
+        <!-- Gyroscope noise -->
+        <rate>
+          <mean>0.0</mean>
+          <stddev>0.0002</stddev>  <!-- 0.0002 rad/s noise -->
+          <bias_mean>0.0001</bias_mean>
+          <bias_stddev>0.00001</bias_stddev>
+        </rate>
+      </noise>
+    </plugin>
+  </sensor>
+</gazebo>
+```
+
+**Published Topic**: `/humanoid/imu` (`sensor_msgs/Imu`)
+
+---
+
+## Processing IMU Data in ROS 2
+
+### Subscribe to IMU
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Imu
+import math
+
+
+class ImuProcessor(Node):
+    def __init__(self):
+        super().__init__('imu_processor')
+        self.subscription = self.create_subscription(
+            Imu,
+            '/humanoid/imu',
+            self.imu_callback,
+            10
+        )
+
+    def imu_callback(self, msg):
+        """
+        Process IMU data
+        """
+        # Linear acceleration (body frame)
+        accel_x = msg.linear_acceleration.x
+        accel_y = msg.linear_acceleration.y
+        accel_z = msg.linear_acceleration.z
+
+        # Magnitude (useful for detecting impacts)
+        accel_magnitude = math.sqrt(accel_x**2 + accel_y**2 + accel_z**2)
+
+        # Angular velocity (body frame)
+        gyro_x = msg.angular_velocity.x
+        gyro_y = msg.angular_velocity.y
+        gyro_z = msg.angular_velocity.z
+
+        # Orientation (quaternion)
+        quat = msg.orientation
+
+        # Convert quaternion to roll, pitch, yaw
+        roll, pitch, yaw = self.quaternion_to_euler(quat)
+
+        self.get_logger().info(
+            f'Accel: {accel_magnitude:.2f} m/s² | '
+            f'Gyro: ({gyro_x:.2f}, {gyro_y:.2f}, {gyro_z:.2f}) rad/s | '
+            f'RPY: ({math.degrees(roll):.1f}°, {math.degrees(pitch):.1f}°, {math.degrees(yaw):.1f}°)'
+        )
+
+        # Fall detection (simple threshold)
+        if abs(roll) > math.radians(45) or abs(pitch) > math.radians(45):
+            self.get_logger().warn('Fall detected!')
+
+    def quaternion_to_euler(self, quat):
+        """
+        Convert quaternion to roll, pitch, yaw
+        """
+        x, y, z, w = quat.x, quat.y, quat.z, quat.w
+
+        # Roll (x-axis rotation)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        # Pitch (y-axis rotation)
+        sinp = 2 * (w * y - z * x)
+        pitch = math.asin(sinp) if abs(sinp) <= 1 else math.copysign(math.pi / 2, sinp)
+
+        # Yaw (z-axis rotation)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        return roll, pitch, yaw
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = ImuProcessor()
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Sensor Noise Models
+
+### Why Add Noise?
+
+Simulated sensors are perfect by default. Real sensors have:
+- **Gaussian Noise**: Random variations
+- **Bias**: Constant offset
+- **Drift**: Slow change over time
+
+**Adding noise** makes algorithms robust to real-world conditions.
+
+### Noise Types
+
+**Gaussian Noise**:
+```xml
+<noise>
+  <type>gaussian</type>
+  <mean>0.0</mean>
+  <stddev>0.01</stddev>  <!-- Standard deviation -->
+</noise>
+```
+
+**Salt-and-Pepper Noise** (for cameras):
+```xml
+<noise>
+  <type>salt_and_pepper</type>
+  <probability>0.01</probability>  <!-- 1% of pixels noisy -->
+</noise>
+```
+
+**Bias and Drift** (for IMU):
+```xml
+<noise>
+  <accel>
+    <bias_mean>0.1</bias_mean>  <!-- Constant offset -->
+    <bias_stddev>0.001</bias_stddev>  <!-- Bias variation -->
+  </accel>
+</noise>
+```
+
+---
+
+## Sensor Calibration
+
+### Camera Calibration
+
+**Intrinsic Parameters** (focal length, distortion):
+- Automatically published in `/camera_info` topic
+- Use `camera_calibration` package for real cameras
+
+**Extrinsic Parameters** (camera position relative to robot):
+- Defined in URDF `<origin>` tag
+- Verify with TF tree: `ros2 run tf2_tools view_frames`
+
+### IMU Calibration
+
+**Static Calibration** (measure bias when stationary):
+
+```python
+class ImuCalibrator(Node):
+    def __init__(self):
+        super().__init__('imu_calibrator')
+        self.samples = []
+        self.subscription = self.create_subscription(Imu, '/humanoid/imu', self.collect_sample, 10)
+
+    def collect_sample(self, msg):
+        self.samples.append(msg.linear_acceleration)
+
+        if len(self.samples) >= 100:
+            # Compute average (bias)
+            avg_x = sum(s.x for s in self.samples) / len(self.samples)
+            avg_y = sum(s.y for s in self.samples) / len(self.samples)
+            avg_z = sum(s.z for s in self.samples) / len(self.samples)
+
+            self.get_logger().info(f'IMU Bias: ({avg_x:.4f}, {avg_y:.4f}, {avg_z:.4f})')
+            rclpy.shutdown()
+```
+
+---
+
+## Multi-Sensor Fusion
+
+### Example: Combine LiDAR and Depth Camera
+
+**Use Case**: Navigation with obstacle avoidance
+
+```python
+class SensorFusion(Node):
+    def __init__(self):
+        super().__init__('sensor_fusion')
+
+        self.lidar_data = None
+        self.depth_data = None
+
+        self.create_subscription(LaserScan, '/humanoid/scan', self.lidar_callback, 10)
+        self.create_subscription(PointCloud2, '/humanoid/camera/depth/points', self.depth_callback, 10)
+
+    def lidar_callback(self, msg):
+        self.lidar_data = msg
+        self.fuse_sensors()
+
+    def depth_callback(self, msg):
+        self.depth_data = msg
+        self.fuse_sensors()
+
+    def fuse_sensors(self):
+        if self.lidar_data is None or self.depth_data is None:
+            return
+
+        # Combine 2D LiDAR (horizontal plane) with 3D depth camera (full FOV)
+        # - LiDAR: Accurate 2D range (ground plane)
+        # - Depth: 3D obstacles (stairs, overhead)
+
+        self.get_logger().info('Sensor fusion: LiDAR + Depth Camera')
+        # ... fusion algorithm here ...
+```
+
+---
+
+## Practical Exercise: Sensor-Based Obstacle Avoidance
+
+**Task**: Create a node that stops the robot if obstacles are detected within 0.5m.
+
+**Requirements**:
+1. Subscribe to `/humanoid/scan` (LiDAR)
+2. Filter ranges < 0.5m
+3. If obstacle detected, publish zero velocity to `/cmd_vel`
+4. Otherwise, publish forward velocity (0.2 m/s)
+
+**Hints**:
+- Use `geometry_msgs/Twist` for velocity commands
+- Check `msg.ranges` array for valid readings
+
+---
+
+## Summary
+
+**Key Takeaways**:
+
+1. **LiDAR**: 2D/3D laser scanning for distance measurement, outputs LaserScan or PointCloud2
+2. **Depth Camera**: RGB + depth images, useful for 3D perception and navigation
+3. **IMU**: Measures acceleration, angular velocity, orientation - critical for balance
+4. **Noise Models**: Add realistic noise (Gaussian, bias, drift) for robust algorithms
+5. **ROS 2 Integration**: Subscribe to sensor topics, process with cv_bridge, numpy, OpenCV
+6. **Sensor Fusion**: Combine multiple sensors for better perception
+
+**Next Module**: Module 3 will cover **Perception & Navigation** using Nav2, SLAM, and sensor data from this chapter.
+
+---
+
+## Troubleshooting
+
+**Problem**: LiDAR shows no readings in RViz2
+
+**Solutions**:
+1. Check sensor is enabled: `<always_on>true</always_on>`
+2. Verify topic name: `ros2 topic list | grep scan`
+3. Check Fixed Frame in RViz2 matches sensor frame (`lidar_link`)
+
+**Problem**: Depth image is all black
+
+**Solutions**:
+1. Check objects are within near/far clip planes
+2. Verify camera is facing objects (check pose in RViz2)
+3. Increase `max_depth` parameter
+
+**Problem**: IMU orientation drifts over time
+
+**Solutions**:
+1. This is realistic behavior (real IMUs drift)
+2. Use sensor fusion (e.g., `robot_localization` package)
+3. Add bias correction in your code
+
+---
+
+## Further Reading
+
+- [ROS 2 Sensor Documentation](https://docs.ros.org/en/humble/Tutorials/Advanced/Simulators/Gazebo/Gazebo.html#sensors)
+- [Gazebo Sensor Plugins](https://classic.gazebosim.org/tutorials?tut=ros_gzplugins)
+- [IMU Sensor Fusion with robot_localization](https://docs.ros.org/en/humble/Tutorials/Advanced/robot_localization/robot_localization.html)
+- [LiDAR-Camera Calibration](https://github.com/beltransen/lidar_camera_calibration)
+
+---
+
+**Module 2 Complete!** ✅ You've mastered digital twin creation with Gazebo, Unity, and sensor simulation. Proceed to **Module 3: Perception & Navigation** to use these sensors for SLAM, obstacle avoidance, and autonomous navigation.

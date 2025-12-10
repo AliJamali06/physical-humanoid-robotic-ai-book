@@ -1,0 +1,229 @@
+# Isaac ROS Visual SLAM Configuration
+# This YAML file configures the visual_slam_node parameters for optimal performance
+# on humanoid robots with monocular camera input.
+#
+# Prerequisites:
+# - Isaac ROS VSLAM installed: sudo apt install ros-humble-isaac-ros-visual-slam
+# - Camera publishing to /camera/image_raw and /camera/camera_info topics
+#
+# Usage:
+#   ros2 launch isaac_ros_visual_slam isaac_ros_visual_slam.launch.py \
+#     config_file:=/path/to/vslam_config.yaml
+
+visual_slam:
+  ros__parameters:
+    # ============================================================================
+    # Camera Configuration
+    # ============================================================================
+
+    # Number of cameras (1 = monocular, 2 = stereo)
+    num_cameras: 1
+
+    # Camera frame ID (must match frame_id in CameraInfo message)
+    camera_frame_id: "camera_link"
+
+    # ============================================================================
+    # Frame IDs (ROS 2 TF Tree)
+    # ============================================================================
+
+    # Global map frame (world-fixed reference)
+    map_frame: "map"
+
+    # Odometry frame (tracks robot motion, may drift without loop closure)
+    odom_frame: "odom"
+
+    # Robot base frame
+    base_frame: "base_link"
+
+    # ============================================================================
+    # Feature Detection Parameters
+    # ============================================================================
+
+    # Number of features to extract per frame
+    # Higher = better tracking, slower performance
+    # Recommended: 500-1500 for monocular, 1000-2000 for stereo
+    num_features: 1000
+
+    # Minimum feature quality (0.0-1.0)
+    # Higher = more robust features, fewer total features
+    feature_quality_threshold: 0.01
+
+    # Feature detector type: "ORB" (default), "SIFT", "FAST"
+    # ORB: Fast, rotation-invariant, good for real-time
+    # SIFT: Slower, scale-invariant, more accurate
+    feature_detector_type: "ORB"
+
+    # ============================================================================
+    # Visual Odometry (Motion Estimation) Parameters
+    # ============================================================================
+
+    # Minimum number of feature matches required to compute odometry
+    # Lower = works in feature-poor environments, less robust
+    # Higher = more robust, may fail in low-texture scenes
+    min_num_matches: 30
+
+    # Maximum reprojection error (pixels) for inlier feature matches
+    # Lower = stricter matching, more robust to outliers
+    # Higher = more permissive, works in challenging scenes
+    ransac_reprojection_error: 2.0
+
+    # RANSAC confidence (0.0-1.0)
+    # Higher = more iterations, more robust, slower
+    ransac_confidence: 0.995
+
+    # ============================================================================
+    # Mapping Parameters
+    # ============================================================================
+
+    # Enable 3D mapping (build landmark map)
+    # Set to false for pure visual odometry (no map)
+    enable_mapping: true
+
+    # Minimum depth for landmarks (meters)
+    # Ignore features closer than this distance (reduces noise)
+    min_landmark_depth: 0.3
+
+    # Maximum depth for landmarks (meters)
+    # Ignore features farther than this distance (unbounded depth = unreliable)
+    max_landmark_depth: 20.0
+
+    # Maximum number of landmarks in the map
+    # Higher = larger maps, more memory, slower optimization
+    max_num_landmarks: 10000
+
+    # ============================================================================
+    # Loop Closure Parameters
+    # ============================================================================
+
+    # Enable loop closure detection (corrects drift)
+    # Set to false for short-term localization (no loop closure needed)
+    enable_loop_closure: true
+
+    # Minimum number of frames between loop closure attempts
+    # Higher = less frequent loop closure, lower CPU usage
+    loop_closure_min_interval: 30
+
+    # Loop closure similarity threshold (0.0-1.0)
+    # Higher = stricter matching, fewer false loop closures
+    # Lower = more loop closures, risk of incorrect matches
+    loop_closure_similarity_threshold: 0.75
+
+    # ============================================================================
+    # Bundle Adjustment (Map Optimization) Parameters
+    # ============================================================================
+
+    # Enable bundle adjustment (global pose optimization)
+    enable_bundle_adjustment: true
+
+    # Trigger bundle adjustment every N frames
+    # Higher = less frequent optimization, faster performance
+    bundle_adjustment_interval: 50
+
+    # Maximum number of iterations for bundle adjustment
+    # Higher = more accurate, slower convergence
+    bundle_adjustment_max_iterations: 10
+
+    # Bundle adjustment solver type: "SPARSE_SCHUR" (default), "DENSE_SCHUR"
+    # SPARSE_SCHUR: Faster, recommended for >100 landmarks
+    bundle_adjustment_solver: "SPARSE_SCHUR"
+
+    # ============================================================================
+    # Performance Tuning
+    # ============================================================================
+
+    # Processing queue size (number of buffered image frames)
+    # Higher = smoother processing, more memory
+    queue_size: 10
+
+    # GPU acceleration (true = use CUDA kernels, false = CPU fallback)
+    # Requires NVIDIA GPU with CUDA support
+    use_gpu: true
+
+    # GPU device ID (0 = first GPU, 1 = second GPU, etc.)
+    gpu_device_id: 0
+
+    # Number of CPU threads for non-GPU operations
+    # Set to 0 for auto-detect (uses all available cores)
+    num_threads: 0
+
+    # ============================================================================
+    # Diagnostics and Logging
+    # ============================================================================
+
+    # Publish diagnostics topic (/visual_slam/diagnostics)
+    # Includes feature count, tracking status, loop closure events
+    publish_diagnostics: true
+
+    # Log level: "DEBUG", "INFO", "WARN", "ERROR"
+    log_level: "INFO"
+
+    # ============================================================================
+    # Output Topics Configuration
+    # ============================================================================
+
+    # Publish odometry (nav_msgs/Odometry)
+    publish_odometry: true
+
+    # Publish camera pose (geometry_msgs/PoseStamped)
+    publish_pose: true
+
+    # Publish SLAM path (nav_msgs/Path) for visualization
+    publish_path: true
+
+    # Publish TF transform (map → odom)
+    publish_tf: true
+
+    # ============================================================================
+    # Advanced Parameters (Optional)
+    # ============================================================================
+
+    # Keyframe selection strategy: "SMART" (default), "FIXED_INTERVAL"
+    # SMART: Add keyframes when motion/features change significantly
+    # FIXED_INTERVAL: Add keyframe every N frames
+    keyframe_strategy: "SMART"
+
+    # Keyframe interval (for FIXED_INTERVAL strategy)
+    keyframe_interval: 10
+
+    # Enable IMU fusion (requires IMU topic)
+    # Improves robustness to fast motion and featureless scenes
+    enable_imu_fusion: false
+
+    # IMU topic (sensor_msgs/Imu)
+    imu_topic: "/imu/data"
+
+
+# ============================================================================
+# Configuration Notes
+# ============================================================================
+
+# Tuning for Different Environments:
+#
+# LOW-TEXTURE ENVIRONMENTS (white walls, uniform floors):
+#   - Increase num_features (1500-2000)
+#   - Lower feature_quality_threshold (0.005)
+#   - Enable IMU fusion (enable_imu_fusion: true)
+#
+# HIGH-SPEED MOTION (running robots, fast camera movement):
+#   - Increase num_features (1500+)
+#   - Reduce processing latency (decrease bundle_adjustment_interval to 20)
+#   - Use higher camera frame rate (60 FPS+)
+#
+# LONG-TERM NAVIGATION (>10 minutes):
+#   - Enable loop closure (enable_loop_closure: true)
+#   - Increase loop closure frequency (loop_closure_min_interval: 20)
+#   - Enable bundle adjustment (enable_bundle_adjustment: true)
+#
+# POWER-CONSTRAINED SYSTEMS (Jetson Nano, low-power embedded):
+#   - Reduce num_features (500-800)
+#   - Disable bundle adjustment (enable_bundle_adjustment: false)
+#   - Increase keyframe_interval (15-20)
+#
+# OUTDOOR NAVIGATION (sunlight, shadows):
+#   - Use illumination-invariant features (feature_detector_type: "SIFT")
+#   - Increase feature_quality_threshold (0.02)
+#   - Enable IMU fusion for robustness
+
+# References:
+# [IsaacROS2023] NVIDIA Isaac ROS Documentation: https://nvidia-isaac-ros.github.io/
+# [MurArtal2017] ORB-SLAM2 original paper for feature tuning guidelines

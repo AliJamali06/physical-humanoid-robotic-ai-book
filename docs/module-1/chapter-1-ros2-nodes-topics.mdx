@@ -1,0 +1,539 @@
+---
+title: "Chapter 1: ROS 2 Nodes and Topic Communication"
+sidebar_position: 2
+description: Learn ROS 2 fundamentals including nodes, publish-subscribe patterns, topics, and rclpy programming for distributed robot control
+keywords: [ros2, nodes, topics, publisher, subscriber, rclpy, robotics, distributed systems]
+---
+
+# Chapter 1: ROS 2 Nodes and Topic Communication
+
+## Learning Objectives
+
+By the end of this chapter, you will be able to:
+
+- **Explain** what ROS 2 nodes are and why they're fundamental to robot systems
+- **Create** Python publisher and subscriber nodes using rclpy
+- **Run** and debug ROS 2 nodes using command-line tools
+- **Understand** topic-based publish-subscribe communication patterns
+- **Verify** node communication using `ros2 topic` and `ros2 node` commands
+
+**Estimated Time**: 60-90 minutes
+
+---
+
+## Prerequisites
+
+- **Python 3**: Basic Python programming (functions, classes, imports)
+- **Linux/Ubuntu**: Familiarity with terminal and basic bash commands
+- **ROS 2 Humble**: Installed and sourced (`source /opt/ros/humble/setup.bash`)
+- **Text Editor**: VS Code, Sublime, or any code editor
+
+---
+
+## What are ROS 2 Nodes?
+
+**ROS 2 nodes** are independent processes that perform specific tasks in a robot system. Think of each node as a specialized worker:
+
+- **Camera Driver Node**: Captures images from camera hardware
+- **Motor Controller Node**: Sends velocity commands to wheel motors
+- **Navigation Node**: Plans paths and avoids obstacles
+- **Sensor Fusion Node**: Combines data from multiple sensors
+
+### Why Use Nodes?
+
+**Modularity**: Each node handles one responsibility (Single Responsibility Principle)
+- Easy to test individual components
+- Replace or upgrade nodes without affecting others
+- Reuse nodes across different robots
+
+**Distributed Computing**: Nodes can run on different machines
+- Run heavy computation (perception) on a powerful desktop
+- Run motor control on embedded hardware (Raspberry Pi)
+- Scale to multi-robot systems
+
+**Fault Tolerance**: If one node crashes, others continue running
+- Camera node fails → robot can still navigate using LiDAR
+- Better than monolithic systems where one bug crashes everything
+
+---
+
+## Topic-Based Communication
+
+ROS 2 nodes communicate using **topics** - named channels for message streaming.
+
+### Publish-Subscribe Pattern
+
+```
+┌────────────────┐         ┌────────────────┐
+│   Publisher    │         │   Subscriber   │
+│     Node       │         │      Node      │
+│                │         │                │
+│  publishes to  │         │  subscribes to │
+│  /sensor_data  │────────▶│  /sensor_data  │
+└────────────────┘         └────────────────┘
+                Topic: /sensor_data
+```
+
+**Key Concepts**:
+- **Publishers** send messages to a topic (one-to-many)
+- **Subscribers** receive messages from a topic (many-to-one)
+- **Decoupled**: Publishers don't know who's listening
+- **Asynchronous**: Messages flow continuously, no blocking
+
+**Example**: Temperature sensor publishes to `/temperature` topic at 10Hz. Multiple subscribers (logger, controller, dashboard) can all receive the data independently.
+
+---
+
+## Creating Your First Publisher Node
+
+Let's create a Python node that publishes string messages to a topic.
+
+### Publisher Code Example
+
+Create a file `simple_publisher.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+
+class SimplePublisher(Node):
+    def __init__(self):
+        super().__init__('simple_publisher')
+
+        # Create publisher: topic name, message type, queue size
+        self.publisher_ = self.create_publisher(String, 'chatter', 10)
+
+        # Create timer: 0.5 seconds = 2Hz publishing rate
+        timer_period = 0.5
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+
+        self.count = 0
+        self.get_logger().info('Publisher node started')
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = f'Hello ROS 2! Message #{self.count}'
+
+        self.publisher_.publish(msg)
+        self.get_logger().info(f'Publishing: "{msg.data}"')
+
+        self.count += 1
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SimplePublisher()
+
+    try:
+        rclpy.spin(node)  # Keep node running
+    except KeyboardInterrupt:
+        pass
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+### Code Breakdown
+
+**Imports**:
+```python
+import rclpy  # ROS 2 Python client library
+from rclpy.node import Node  # Base node class
+from std_msgs.msg import String  # Message type
+```
+
+**Node Class**:
+- Inherits from `Node` base class
+- Constructor calls `super().__init__('node_name')` to initialize
+
+**Publisher Creation**:
+```python
+self.publisher_ = self.create_publisher(String, 'chatter', 10)
+```
+- `String`: Message type (from `std_msgs`)
+- `'chatter'`: Topic name (convention: lowercase, underscores)
+- `10`: Queue size (buffer for messages)
+
+**Timer**:
+```python
+self.timer = self.create_timer(0.5, self.timer_callback)
+```
+- Calls `timer_callback()` every 0.5 seconds
+- Alternative to manual `while` loops (ROS 2 handles timing)
+
+**Publishing**:
+```python
+msg = String()
+msg.data = 'Hello ROS 2!'
+self.publisher_.publish(msg)
+```
+
+---
+
+## Creating Your First Subscriber Node
+
+Now create a node that receives messages from the `chatter` topic.
+
+### Subscriber Code Example
+
+Create a file `simple_subscriber.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+
+class SimpleSubscriber(Node):
+    def __init__(self):
+        super().__init__('simple_subscriber')
+
+        # Create subscriber: topic name, message type, callback function, queue size
+        self.subscription = self.create_subscription(
+            String,
+            'chatter',
+            self.listener_callback,
+            10
+        )
+        self.get_logger().info('Subscriber node started')
+
+    def listener_callback(self, msg):
+        self.get_logger().info(f'Received: "{msg.data}"')
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SimpleSubscriber()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+### Code Breakdown
+
+**Subscriber Creation**:
+```python
+self.subscription = self.create_subscription(
+    String,           # Message type
+    'chatter',        # Topic name (must match publisher)
+    self.listener_callback,  # Function to call when message arrives
+    10                # Queue size
+)
+```
+
+**Callback Function**:
+```python
+def listener_callback(self, msg):
+    # Called automatically when message arrives
+    self.get_logger().info(f'Received: "{msg.data}"')
+```
+- Receives `msg` parameter (type: `String`)
+- Process data immediately (don't block for long operations)
+
+---
+
+## Running the Nodes
+
+### Terminal 1: Run Publisher
+
+```bash
+# Source ROS 2
+source /opt/ros/humble/setup.bash
+
+# Run publisher
+python3 simple_publisher.py
+```
+
+**Expected Output**:
+```
+[INFO] [simple_publisher]: Publisher node started
+[INFO] [simple_publisher]: Publishing: "Hello ROS 2! Message #0"
+[INFO] [simple_publisher]: Publishing: "Hello ROS 2! Message #1"
+[INFO] [simple_publisher]: Publishing: "Hello ROS 2! Message #2"
+...
+```
+
+### Terminal 2: Run Subscriber
+
+```bash
+# Source ROS 2
+source /opt/ros/humble/setup.bash
+
+# Run subscriber
+python3 simple_subscriber.py
+```
+
+**Expected Output**:
+```
+[INFO] [simple_subscriber]: Subscriber node started
+[INFO] [simple_subscriber]: Received: "Hello ROS 2! Message #5"
+[INFO] [simple_subscriber]: Received: "Hello ROS 2! Message #6"
+[INFO] [simple_subscriber]: Received: "Hello ROS 2! Message #7"
+...
+```
+
+:::tip Notice
+Subscriber starts receiving messages from the current count, not from #0. Messages published before subscriber starts are lost (unless using QoS settings).
+:::
+
+---
+
+## Debugging with ROS 2 Command-Line Tools
+
+### List Active Nodes
+
+```bash
+ros2 node list
+```
+
+**Output**:
+```
+/simple_publisher
+/simple_subscriber
+```
+
+### List Active Topics
+
+```bash
+ros2 topic list
+```
+
+**Output**:
+```
+/chatter
+/parameter_events
+/rosout
+```
+
+### Inspect Topic Details
+
+```bash
+ros2 topic info /chatter
+```
+
+**Output**:
+```
+Type: std_msgs/msg/String
+Publisher count: 1
+Subscription count: 1
+```
+
+### Echo Topic Messages
+
+View messages in real-time:
+
+```bash
+ros2 topic echo /chatter
+```
+
+**Output**:
+```
+data: 'Hello ROS 2! Message #15'
+---
+data: 'Hello ROS 2! Message #16'
+---
+```
+
+### Check Message Type
+
+```bash
+ros2 topic type /chatter
+```
+
+**Output**:
+```
+std_msgs/msg/String
+```
+
+### Publish from Command Line
+
+You can publish manually without code:
+
+```bash
+ros2 topic pub /chatter std_msgs/msg/String "data: 'Manual message'"
+```
+
+---
+
+## Quality of Service (QoS) Basics
+
+**QoS (Quality of Service)** policies control how messages are delivered.
+
+### Common QoS Profiles
+
+**RELIABLE** (default for most cases):
+- Guarantees message delivery
+- Retries if message lost
+- Use for: Commands, critical sensor data
+
+**BEST_EFFORT**:
+- No delivery guarantee
+- Faster, lower latency
+- Use for: High-frequency sensor streams (LiDAR, camera)
+
+### Example: Best Effort Publisher
+
+```python
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
+
+qos_profile = QoSProfile(
+    reliability=QoSReliabilityPolicy.BEST_EFFORT,
+    depth=10
+)
+
+self.publisher_ = self.create_publisher(
+    String,
+    'sensor_stream',
+    qos_profile
+)
+```
+
+:::info When to Use Each
+- **Commands/Control**: RELIABLE
+- **Sensor Streams**: BEST_EFFORT
+- **Logging**: RELIABLE
+- **Video Frames**: BEST_EFFORT
+:::
+
+---
+
+## Practical Exercise 1: Modify the Publisher
+
+**Task**: Modify `simple_publisher.py` to publish temperature sensor readings.
+
+**Requirements**:
+1. Change topic name to `/temperature`
+2. Publish numeric values (e.g., 20.5, 21.2, 19.8)
+3. Add simulated sensor noise (random ±0.5 variation)
+4. Change publishing rate to 10Hz
+
+**Hints**:
+- Use `random.uniform(-0.5, 0.5)` for noise
+- Timer period for 10Hz: `timer_period = 0.1`
+- Still use `String` message type (format: "20.5")
+
+**Solution** (try yourself first!):
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import random
+
+
+class TemperatureSensor(Node):
+    def __init__(self):
+        super().__init__('temperature_sensor')
+        self.publisher_ = self.create_publisher(String, 'temperature', 10)
+        self.timer = self.create_timer(0.1, self.timer_callback)  # 10Hz
+        self.base_temp = 20.0
+
+    def timer_callback(self):
+        noise = random.uniform(-0.5, 0.5)
+        temp = self.base_temp + noise
+
+        msg = String()
+        msg.data = f'{temp:.2f}'
+        self.publisher_.publish(msg)
+        self.get_logger().info(f'Temperature: {temp:.2f}°C')
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = TemperatureSensor()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Practical Exercise 2: Create a Logger Subscriber
+
+**Task**: Create a subscriber that logs temperature data to a file.
+
+**Requirements**:
+1. Subscribe to `/temperature` topic
+2. Write received values to `temp_log.txt`
+3. Include timestamp for each reading
+4. Print confirmation when file is written
+
+**Hints**:
+- Use Python's `datetime.datetime.now()`
+- Open file in append mode: `open('temp_log.txt', 'a')`
+
+---
+
+## Summary
+
+**Key Takeaways**:
+
+1. **ROS 2 Nodes**: Independent processes for modular robot systems
+2. **Topics**: Named channels for publish-subscribe communication
+3. **Publisher**: Sends messages to a topic (`create_publisher`, `publish`)
+4. **Subscriber**: Receives messages from a topic (`create_subscription`, callback)
+5. **Command Tools**: `ros2 node list`, `ros2 topic echo`, `ros2 topic info`
+6. **QoS**: RELIABLE (guaranteed delivery) vs BEST_EFFORT (low latency)
+
+**Next Chapter**: Chapter 2 will cover **Services** - synchronous request-response communication for robot commands (e.g., "move to position", "change mode").
+
+---
+
+## Troubleshooting
+
+**Problem**: Nodes can't see each other
+
+**Solution**: Check ROS_DOMAIN_ID environment variable matches:
+```bash
+echo $ROS_DOMAIN_ID
+export ROS_DOMAIN_ID=0
+```
+
+**Problem**: Import errors (`ModuleNotFoundError: No module named 'rclpy'`)
+
+**Solution**: Source ROS 2 setup file:
+```bash
+source /opt/ros/humble/setup.bash
+```
+
+**Problem**: Messages not receiving
+
+**Solution**:
+1. Check topic names match exactly (case-sensitive)
+2. Verify message types match
+3. Check both nodes are running (`ros2 node list`)
+4. Use `ros2 topic info /topic_name` to verify publishers/subscribers
+
+---
+
+## Further Reading
+
+- [ROS 2 Official Documentation](https://docs.ros.org/en/humble/)
+- [rclpy API Reference](https://docs.ros.org/en/humble/p/rclpy/)
+- [Understanding ROS 2 Topics](https://docs.ros.org/en/humble/Tutorials/Beginner-CLI-Tools/Understanding-ROS2-Topics/Understanding-ROS2-Topics.html)
+
+---
+
+**Chapter 1 Complete!** ✅ You've mastered ROS 2 nodes and topic communication. Proceed to **Chapter 2: Services for Request-Response Communication**.

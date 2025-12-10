@@ -1,0 +1,357 @@
+# Action Grounding Prompt Template
+
+## Purpose
+This prompt helps the LLM map abstract natural language commands to concrete robot APIs with specific parameters. Grounding ensures the LLM's plans are executable by the robot's actual hardware and software.
+
+## What is Action Grounding?
+
+**Action grounding** is the process of translating high-level verbs and concepts from natural language into low-level robot function calls with concrete parameters.
+
+### Examples of Grounding
+
+| Abstract Command | Grounded Action | Explanation |
+|------------------|-----------------|-------------|
+| "go to the kitchen" | `navigate_to_pose("kitchen", 5.0, 3.0, 0.0)` | Maps "go" to navigation API with kitchen coordinates |
+| "pick up the cup" | `detect_objects(["cup"], 0.8)` + `grasp_object("$obj_0", 5.0)` | Maps "pick up" to detect+grasp sequence |
+| "bring me X" | navigate→detect→grasp→navigate→handover | Maps "bring" to 5-step fetch-deliver pattern |
+| "look for a bottle" | `detect_objects(["bottle"], 0.7)` | Maps "look for" to object detection |
+| "put it down" | `place_object("table", 0.0, 0.0, 0.0)` | Maps "put down" to placement action |
+
+---
+
+## Grounding Rules
+
+### Rule 1: Verb-to-Action Mapping
+
+Map natural language verbs to robot action primitives:
+
+| Natural Language Verb | Robot Action | Parameters Required |
+|-----------------------|--------------|---------------------|
+| go, move, navigate, travel, head | `navigate_to_pose` | location, x, y, theta |
+| get, fetch, bring, retrieve | navigate + detect + grasp + navigate + handover | location, object classes |
+| pick up, grab, grasp, take | detect + grasp | object classes, grasp force |
+| put down, place, set down | `place_object` | location, x, y, z |
+| find, look for, search | `detect_objects` | object classes, confidence |
+| give, hand, handover | `handover_object` | release condition |
+| open | `open_door` | door_id, push_or_pull |
+| wait, pause, hold | `wait` | duration_s |
+
+### Rule 2: Object-to-Class Mapping
+
+Map specific object mentions to vision system object classes:
+
+| User Says | Map to Class | Notes |
+|-----------|--------------|-------|
+| "cup", "mug", "coffee cup" | `"cup"` | Single canonical class |
+| "bottle", "water bottle", "drink bottle" | `"bottle"` | Single canonical class |
+| "drink" (generic) | `["cup", "bottle", "glass"]` | Multiple possible classes |
+| "utensil" | `["fork", "knife", "spoon"]` | Multiple possible classes |
+| "the red block" | `"block"` + color filter | Detection followed by color filtering |
+| "a person", "someone", "the user" | `"person"` | Human detection |
+
+**If user mentions an object not in the robot's detection vocabulary, note in the plan's error field and request clarification.**
+
+### Rule 3: Location-to-Coordinates Mapping
+
+Map semantic location names to map coordinates:
+
+| Semantic Location | Coordinates (x, y, theta) | Use Case |
+|-------------------|---------------------------|----------|
+| "kitchen" | (5.0, 3.0, 0.0) | Cooking area |
+| "living room" | (2.0, 1.0, 0.0) | Sitting area |
+| "bedroom" | (8.0, 5.0, 0.0) | Sleeping area |
+| "dining table" | (3.5, 4.0, 0.0) | Eating area |
+| "user" | (0.0, 0.0, 3.14) | Current user location (dynamic) |
+| "home base" | (0.0, 0.0, 0.0) | Charging station |
+
+**If user specifies relative locations ("to my left", "behind the couch"), note that this requires real-time perception and cannot be pre-grounded.**
+
+### Rule 4: Parameter Value Selection
+
+Choose appropriate parameter values based on context:
+
+#### Grasp Force Selection
+- **Fragile objects** (glass, paper, delicate items): 2.0-4.0 N
+- **Standard objects** (cups, bottles, books): 4.0-7.0 N
+- **Heavy/sturdy objects** (cans, tools): 7.0-10.0 N
+- **Unknown objects**: Default to 5.0 N (middle ground)
+
+#### Detection Confidence
+- **High precision needed** (safety-critical): 0.9-0.95
+- **Standard detection**: 0.8 (recommended default)
+- **Permissive detection** (ok to over-detect): 0.6-0.7
+
+#### Navigation Orientation (theta)
+- **Facing +X axis**: 0.0 radians
+- **Facing +Y axis**: π/2 radians (1.57)
+- **Facing -X axis**: π radians (3.14)
+- **Facing -Y axis**: 3π/2 radians (4.71)
+- **Facing user**: 3.14 radians (180° turn-around)
+
+#### Expected Durations
+- **Navigation**: 10-60 seconds (depends on distance; ~2 seconds per meter)
+- **Detection**: 1-5 seconds (depends on scene complexity)
+- **Grasping**: 5-15 seconds (approach + grasp + lift)
+- **Placement**: 5-10 seconds (approach + lower + release)
+- **Handover**: 3-5 seconds (wait for user confirmation)
+
+---
+
+## Grounding Examples
+
+### Example 1: Simple Fetch Command
+
+**User Input**: "Bring me a bottle"
+
+**Grounding Process**:
+
+1. **Verb grounding**: "Bring" → fetch-deliver pattern (navigate + detect + grasp + navigate + handover)
+2. **Object grounding**: "bottle" → `"bottle"` class
+3. **Location grounding**: Implicit "from kitchen" (most common bottle location) → (5.0, 3.0, 0.0)
+4. **Parameter selection**:
+   - Detection confidence: 0.8 (standard)
+   - Grasp force: 6.0 N (bottle is sturdy)
+   - Durations: nav=30s, detect=3s, grasp=10s, nav=30s, handover=5s
+
+**Grounded Plan**:
+```json
+{
+  "task": "Bring me a bottle",
+  "steps": [
+    {"step_id": 1, "action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}, "dependencies": [], "expected_duration_s": 30},
+    {"step_id": 2, "action": "detect_objects", "params": {"classes": ["bottle"], "min_confidence": 0.8}, "dependencies": [1], "expected_duration_s": 3},
+    {"step_id": 3, "action": "grasp_object", "params": {"object_id": "$detected_object_0", "grasp_force": 6.0}, "dependencies": [2], "expected_duration_s": 10},
+    {"step_id": 4, "action": "navigate_to_pose", "params": {"location": "user", "x": 0.0, "y": 0.0, "theta": 3.14}, "dependencies": [3], "expected_duration_s": 30},
+    {"step_id": 5, "action": "handover_object", "params": {"release_condition": "user_confirmation"}, "dependencies": [4], "expected_duration_s": 5}
+  ],
+  "notes": "Assumes bottle is in kitchen and detectable. If no bottle found, plan fails at step 2."
+}
+```
+
+### Example 2: Complex Multi-Object Command
+
+**User Input**: "Set the table with a plate and fork"
+
+**Grounding Process**:
+
+1. **Verb grounding**: "Set the table" → multiple placement actions
+2. **Object grounding**: "plate" → `"plate"`, "fork" → `"fork"`
+3. **Location grounding**: "table" → dining_table (3.5, 4.0, 0.0)
+4. **Decomposition**: Two separate fetch-and-place sequences (plate, then fork)
+
+**Grounded Plan**:
+```json
+{
+  "task": "Set the table with a plate and fork",
+  "steps": [
+    {"step_id": 1, "action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}, "dependencies": [], "expected_duration_s": 20},
+    {"step_id": 2, "action": "detect_objects", "params": {"classes": ["plate"], "min_confidence": 0.8}, "dependencies": [1], "expected_duration_s": 3},
+    {"step_id": 3, "action": "grasp_object", "params": {"object_id": "$detected_object_0", "grasp_force": 5.0}, "dependencies": [2], "expected_duration_s": 10},
+    {"step_id": 4, "action": "navigate_to_pose", "params": {"location": "dining_table", "x": 3.5, "y": 4.0, "theta": 0.0}, "dependencies": [3], "expected_duration_s": 20},
+    {"step_id": 5, "action": "place_object", "params": {"location": "table", "x": 0.0, "y": 0.0, "z": 0.0}, "dependencies": [4], "expected_duration_s": 8},
+    {"step_id": 6, "action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}, "dependencies": [5], "expected_duration_s": 20},
+    {"step_id": 7, "action": "detect_objects", "params": {"classes": ["fork"], "min_confidence": 0.8}, "dependencies": [6], "expected_duration_s": 3},
+    {"step_id": 8, "action": "grasp_object", "params": {"object_id": "$detected_object_0", "grasp_force": 3.0}, "dependencies": [7], "expected_duration_s": 10},
+    {"step_id": 9, "action": "navigate_to_pose", "params": {"location": "dining_table", "x": 3.5, "y": 4.0, "theta": 0.0}, "dependencies": [8], "expected_duration_s": 20},
+    {"step_id": 10, "action": "place_object", "params": {"location": "table", "x": 0.1, "y": 0.0, "z": 0.0}, "dependencies": [9], "expected_duration_s": 8}
+  ],
+  "notes": "Plate placed at (0.0, 0.0) relative to table center, fork placed at (0.1, 0.0) to avoid overlap. Fork uses lower grasp force (3.0N) due to smaller size."
+}
+```
+
+### Example 3: Ambiguous Location
+
+**User Input**: "Go over there"
+
+**Grounding Process**:
+
+1. **Verb grounding**: "Go" → `navigate_to_pose`
+2. **Location grounding**: "over there" → **AMBIGUOUS** (no coordinates specified)
+3. **Resolution**: Cannot ground without coordinates → Request clarification
+
+**Grounded Plan**:
+```json
+{
+  "task": "Go over there",
+  "steps": [],
+  "notes": "CLARIFICATION NEEDED: Location 'over there' is ambiguous. Please specify a named location (kitchen, living_room, bedroom, dining_table, home_base) or provide coordinates (x, y in meters). Example: 'Go to the kitchen' or 'Go to coordinates x=3.0, y=2.0'."
+}
+```
+
+### Example 4: Impossible Action
+
+**User Input**: "Teleport to the bedroom"
+
+**Grounding Process**:
+
+1. **Verb grounding**: "Teleport" → **NO MATCHING ACTION** (robot cannot teleport)
+2. **Resolution**: Explain constraint, suggest alternative
+
+**Grounded Plan**:
+```json
+{
+  "task": "Teleport to the bedroom",
+  "steps": [],
+  "notes": "INFEASIBLE: Robot does not have a 'teleport' capability. Did you mean 'navigate to the bedroom'? Available locomotion action: navigate_to_pose (ground-based movement at max 0.5 m/s)."
+}
+```
+
+---
+
+## Grounding Checklist
+
+Before outputting a plan, verify:
+
+### ✅ Action Validity
+- [ ] All `action` fields match robot's capability set (navigate_to_pose, detect_objects, grasp_object, etc.)
+- [ ] No hallucinated actions (no "fly", "teleport", "magic_summon", etc.)
+
+### ✅ Parameter Completeness
+- [ ] All required parameters provided for each action
+- [ ] No placeholder values ("TODO", "TBD", "unknown")
+
+### ✅ Parameter Ranges
+- [ ] Coordinates within workspace bounds (x: -10 to 10, y: -10 to 10)
+- [ ] Grasp forces within 0.0-10.0 N
+- [ ] Detection confidence within 0.0-1.0
+- [ ] Orientation theta within 0 to 2π radians (0 to 6.28)
+
+### ✅ Object Classes
+- [ ] All object classes match robot's vision vocabulary
+- [ ] If generic term used (e.g., "drink"), expanded to specific classes (["cup", "bottle", "glass"])
+
+### ✅ Location Grounding
+- [ ] Semantic locations mapped to coordinates
+- [ ] If ambiguous location ("there", "somewhere"), clarification requested
+
+### ✅ Duration Estimates
+- [ ] Realistic durations provided (navigation >10s, grasping >5s)
+- [ ] Total plan duration <5 minutes for simple tasks (<15 minutes for complex)
+
+### ✅ Dependency Logic
+- [ ] All dependency step IDs exist in the plan
+- [ ] No circular dependencies (forms DAG)
+
+---
+
+## Advanced Grounding Scenarios
+
+### Scenario 1: Conditional Commands
+
+**User Input**: "If there's a cup in the kitchen, bring it to me"
+
+**Grounding Strategy**:
+- Ground detection step normally
+- Add note explaining conditional logic (if no cup detected, plan stops at step 2)
+
+```json
+{
+  "task": "If there's a cup in the kitchen, bring it to me",
+  "steps": [
+    {"step_id": 1, "action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}, "dependencies": [], "expected_duration_s": 30},
+    {"step_id": 2, "action": "detect_objects", "params": {"classes": ["cup"], "min_confidence": 0.8}, "dependencies": [1], "expected_duration_s": 5},
+    {"step_id": 3, "action": "grasp_object", "params": {"object_id": "$detected_object_0", "grasp_force": 5.0}, "dependencies": [2], "expected_duration_s": 10},
+    {"step_id": 4, "action": "navigate_to_pose", "params": {"location": "user", "x": 0.0, "y": 0.0, "theta": 3.14}, "dependencies": [3], "expected_duration_s": 30},
+    {"step_id": 5, "action": "handover_object", "params": {"release_condition": "user_confirmation"}, "dependencies": [4], "expected_duration_s": 5}
+  ],
+  "notes": "Conditional command: If no cup detected at step 2, plan will fail gracefully. User will be notified 'no cup found in kitchen'. No action taken if condition not met."
+}
+```
+
+### Scenario 2: Implicit Object Properties
+
+**User Input**: "Bring me a fragile object from the table"
+
+**Grounding Strategy**:
+- "Fragile" is not detectable by vision → assume glass or cup (common fragile items)
+- Use low grasp force (3.0 N) to accommodate fragility
+
+```json
+{
+  "task": "Bring me a fragile object from the table",
+  "steps": [
+    {"step_id": 1, "action": "navigate_to_pose", "params": {"location": "dining_table", "x": 3.5, "y": 4.0, "theta": 0.0}, "dependencies": [], "expected_duration_s": 20},
+    {"step_id": 2, "action": "detect_objects", "params": {"classes": ["glass", "cup"], "min_confidence": 0.8}, "dependencies": [1], "expected_duration_s": 3},
+    {"step_id": 3, "action": "grasp_object", "params": {"object_id": "$detected_object_0", "grasp_force": 3.0}, "dependencies": [2], "expected_duration_s": 10},
+    {"step_id": 4, "action": "navigate_to_pose", "params": {"location": "user", "x": 0.0, "y": 0.0, "theta": 3.14}, "dependencies": [3], "expected_duration_s": 20},
+    {"step_id": 5, "action": "handover_object", "params": {"release_condition": "user_confirmation"}, "dependencies": [4], "expected_duration_s": 5}
+  ],
+  "notes": "Interpreted 'fragile object' as glass or cup (common fragile items on tables). Using low grasp force (3.0 N) to avoid damage. If user meant different object type, please specify explicitly."
+}
+```
+
+### Scenario 3: Spatial Relationships
+
+**User Input**: "Put the book next to the laptop"
+
+**Grounding Strategy**:
+- "Next to" requires detecting laptop first to determine placement location
+- Add detection step for laptop, use its position + offset for book placement
+
+```json
+{
+  "task": "Put the book next to the laptop",
+  "steps": [
+    {"step_id": 1, "action": "detect_objects", "params": {"classes": ["laptop"], "min_confidence": 0.8}, "dependencies": [], "expected_duration_s": 3},
+    {"step_id": 2, "action": "detect_objects", "params": {"classes": ["book"], "min_confidence": 0.8}, "dependencies": [], "expected_duration_s": 3},
+    {"step_id": 3, "action": "grasp_object", "params": {"object_id": "$detected_book_0", "grasp_force": 4.0}, "dependencies": [2], "expected_duration_s": 10},
+    {"step_id": 4, "action": "place_object", "params": {"location": "near_laptop", "x": "$laptop_x + 0.2", "y": "$laptop_y", "z": 0.0}, "dependencies": [1, 3], "expected_duration_s": 8}
+  ],
+  "notes": "Spatial grounding: 'next to' interpreted as 0.2m offset from laptop position. Requires detecting both laptop and book first. Assumes both objects are visible and within reach."
+}
+```
+
+---
+
+## Common Grounding Errors to Avoid
+
+### ❌ Error 1: Vague Action Names
+```json
+{"action": "do_the_thing", "params": {...}}  // Bad: not a real action
+{"action": "navigate_to_pose", "params": {...}}  // Good: specific robot action
+```
+
+### ❌ Error 2: Missing Parameters
+```json
+{"action": "navigate_to_pose", "params": {"location": "kitchen"}}  // Bad: missing x, y, theta
+{"action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}}  // Good
+```
+
+### ❌ Error 3: Invalid Parameter Values
+```json
+{"action": "grasp_object", "params": {"grasp_force": 50.0}}  // Bad: exceeds 10.0 N limit
+{"action": "grasp_object", "params": {"grasp_force": 6.0}}  // Good: within range
+```
+
+### ❌ Error 4: Non-Existent Object Classes
+```json
+{"action": "detect_objects", "params": {"classes": ["unicorn", "dragon"]}}  // Bad: not in robot vocab
+{"action": "detect_objects", "params": {"classes": ["cup", "bottle"]}}  // Good: valid classes
+```
+
+### ❌ Error 5: Ungrounded Locations
+```json
+{"action": "navigate_to_pose", "params": {"location": "the place"}}  // Bad: ambiguous
+{"action": "navigate_to_pose", "params": {"location": "kitchen", "x": 5.0, "y": 3.0, "theta": 0.0}}  // Good
+```
+
+---
+
+## Summary
+
+**Action grounding** ensures LLM plans are executable by:
+1. Mapping verbs to robot actions
+2. Translating object names to vision classes
+3. Converting locations to coordinates
+4. Selecting appropriate parameter values
+5. Validating all constraints
+
+**Always ground every component of the user's command. If grounding is not possible (ambiguous, impossible), request clarification rather than hallucinating parameters.**
+
+---
+
+Now ground the following command:
+
+**User Command**: "{USER_COMMAND}"
+
+Output the fully grounded plan as JSON.

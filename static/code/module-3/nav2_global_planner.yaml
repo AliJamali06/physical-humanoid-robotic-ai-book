@@ -1,0 +1,148 @@
+# Nav2 Global Planner Configuration
+# Configures the global planner (NavFn with A* algorithm) for path planning
+# from start to goal on the static cost map.
+#
+# Prerequisites:
+# - Nav2 installed: sudo apt install ros-humble-navigation2
+# - Localization active (VSLAM or AMCL)
+# - Global cost map configured
+#
+# Usage:
+#   Include this file in nav2_params.yaml under 'planner_server' namespace
+
+planner_server:
+  ros__parameters:
+    # =========================================================================
+    # Planner Server Configuration
+    # =========================================================================
+
+    # Planning frequency (how often to replan if goal/map changes)
+    # Higher = more responsive, higher CPU usage
+    planner_rate: 1.0  # Hz (1 Hz = replan every 1 second)
+
+    # Expected planner frequency (for diagnostics)
+    expected_planner_frequency: 1.0
+
+    # Plugin type for global planner
+    # Options: "nav2_navfn_planner/NavfnPlanner" (A*/Dijkstra),
+    #          "nav2_smac_planner/SmacPlannerHybrid" (kinematic planning)
+    planner_plugins: ["GridBased"]
+
+    # =========================================================================
+    # NavFn Planner Plugin (A* or Dijkstra)
+    # =========================================================================
+
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+
+      # Use A* algorithm (true) or Dijkstra (false)
+      # A* is much faster for large maps (uses heuristic)
+      use_astar: true
+
+      # Goal tolerance (accept position within this distance of goal)
+      # Larger = easier to reach goal, may stop farther away
+      tolerance: 0.5  # meters
+
+      # Allow planning through unknown space (cost=255)
+      # true: Plan through unexplored areas (useful for exploration)
+      # false: Only plan through known free space
+      allow_unknown: false
+
+      # Use final approach orientation (align robot with goal orientation)
+      # true: Robot will orient toward goal direction at end of path
+      # false: Robot ends at goal position but ignores orientation
+      use_final_approach_orientation: true
+
+      # Cost threshold for lethal obstacles
+      # Cells with cost >= this value are considered impassable
+      lethal_cost: 253
+
+      # Neutral cost (for free space cells)
+      neutral_cost: 50
+
+      # Cost factor (scale factor for cost values)
+      cost_factor: 3.0
+
+      # Use quadratic approximation for distance calculation
+      # true: Slightly more accurate, slower
+      # false: Manhattan distance (faster)
+      use_quadratic_cost_penalty: false
+
+      # Downsample cost map for faster planning
+      # Higher = faster but less precise paths
+      downsample_costmap: false
+
+      # =========================================================================
+      # Heuristic Tuning (A* Only)
+      # =========================================================================
+
+      # Heuristic weight (balance between speed and optimality)
+      # 1.0 = optimal but slower (pure A*)
+      # 2.0-5.0 = faster but potentially suboptimal (weighted A*)
+      # Higher values make planner greedier (prioritize goal over obstacle avoidance)
+      use_dijkstra_heuristic: false  # Use Euclidean distance heuristic
+
+    # =========================================================================
+    # Smac Planner Hybrid (Alternative: Kinematic Planning)
+    # =========================================================================
+    # Uncomment to use Smac Planner instead of NavFn
+    # SmacHybrid:
+    #   plugin: "nav2_smac_planner/SmacPlannerHybrid"
+    #
+    #   # Turning radius (minimum turning radius for robot)
+    #   minimum_turning_radius: 0.4  # meters
+    #
+    #   # Motion primitives (forward, reverse, turn)
+    #   reverse_penalty: 2.0  # Penalty for reversing
+    #   change_penalty: 0.1  # Penalty for changing direction
+    #   non_straight_penalty: 1.2  # Penalty for turns
+    #
+    #   # Search parameters
+    #   max_iterations: 1000000
+    #   max_on_approach_iterations: 1000
+    #   terminal_checking_interval: 5000
+    #
+    #   # Analytic expansion (attempt direct path to goal)
+    #   analytic_expansion_ratio: 3.5
+    #   analytic_expansion_max_length: 3.0
+    #
+    #   # Smoother (post-process path for smoothness)
+    #   smoother:
+    #     max_iterations: 1000
+    #     w_smooth: 0.3
+    #     w_data: 0.2
+    #     tolerance: 1.0e-10
+
+
+# =============================================================================
+# Configuration Notes
+# =============================================================================
+
+# Tuning for Different Scenarios:
+#
+# LARGE MAPS (>100m x 100m):
+#   - use_astar: true (much faster than Dijkstra)
+#   - downsample_costmap: true (reduce resolution for speed)
+#   - planner_rate: 0.5  # Replan less frequently
+#
+# DYNAMIC ENVIRONMENTS (moving obstacles):
+#   - planner_rate: 2.0  # Replan more frequently (every 0.5 seconds)
+#   - allow_unknown: true  # Plan through unexplored areas
+#
+# NARROW PASSAGES (tight spaces):
+#   - tolerance: 0.2  # Stricter goal tolerance
+#   - cost_factor: 2.0  # Reduce cost scaling (more aggressive near obstacles)
+#   - Consider switching to SmacPlanner for kinematic feasibility
+#
+# HUMANOID ROBOTS (non-holonomic constraints):
+#   - Use SmacPlannerHybrid instead of NavFn
+#   - Set minimum_turning_radius to match robot's capabilities
+#   - Use footstep planner downstream to convert path to footsteps
+#
+# EXPLORATION (unknown environment):
+#   - allow_unknown: true
+#   - tolerance: 1.0  # Larger tolerance (goal may be in unexplored area)
+
+# References:
+# [Nav2Docs] Nav2 Planner Server: https://navigation.ros.org/configuration/packages/configuring-planner-server.html
+# [LaValle2006] Planning Algorithms (free online book)

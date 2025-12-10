@@ -1,0 +1,140 @@
+.features {
+  display: flex;
+  align-items: center;
+  padding: 3rem 0;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.featureSvg {
+  height: 180px;
+  width: 180px;
+  margin-bottom: 1.5rem;
+  transition: transform 0.3s ease;
+}
+
+/* Enhanced card container styling */
+.featureCard {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 16px;
+  padding: 2.5rem;
+  height: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(0, 102, 204, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.featureCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0066cc, #3399ff);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.featureCard:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 32px rgba(0, 102, 204, 0.2);
+  border-color: rgba(0, 102, 204, 0.3);
+}
+
+.featureCard:hover::before {
+  opacity: 1;
+}
+
+.featureCard:hover .featureSvg {
+  transform: scale(1.05);
+}
+
+/* Dark mode card styling */
+[data-theme='dark'] .featureCard {
+  background: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%);
+  border-color: rgba(51, 153, 255, 0.15);
+}
+
+[data-theme='dark'] .featureCard::before {
+  background: linear-gradient(90deg, #3399ff, #66b3ff);
+}
+
+[data-theme='dark'] .featureCard:hover {
+  box-shadow: 0 12px 32px rgba(51, 153, 255, 0.25);
+  border-color: rgba(51, 153, 255, 0.4);
+}
+
+/* Feature content styling */
+.featureTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--ifm-color-primary);
+}
+
+.featureDescription {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--ifm-font-color-base);
+  opacity: 0.9;
+  margin-bottom: 1.5rem;
+}
+
+/* Enhanced "Start Learning" button */
+.featureLink {
+  display: inline-block;
+  padding: 0.75rem 1.75rem;
+  background: linear-gradient(135deg, #0066cc, #004d99);
+  color: white !important;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.featureLink::after {
+  content: '→';
+  margin-left: 0.5rem;
+  transition: margin-left 0.3s ease;
+}
+
+.featureLink:hover {
+  background: linear-gradient(135deg, #004d99, #003d7a);
+  transform: translateX(4px);
+  box-shadow: 0 4px 16px rgba(0, 102, 204, 0.4);
+  color: white !important;
+}
+
+.featureLink:hover::after {
+  margin-left: 0.75rem;
+}
+
+[data-theme='dark'] .featureLink {
+  background: linear-gradient(135deg, #3399ff, #1a8cff);
+  box-shadow: 0 2px 8px rgba(51, 153, 255, 0.3);
+}
+
+[data-theme='dark'] .featureLink:hover {
+  background: linear-gradient(135deg, #4da6ff, #3399ff);
+  box-shadow: 0 4px 16px rgba(51, 153, 255, 0.4);
+}
+
+/* Responsive adjustments */
+@media (max-width: 996px) {
+  .featureCard {
+    margin-bottom: 2rem;
+  }
+
+  .featureSvg {
+    height: 150px;
+    width: 150px;
+  }
+}
