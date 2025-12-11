@@ -1,15 +1,6 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "build",
-  "installCommand": "npm install --legacy-peer-deps",
-  "framework": "docusaurus-2",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
-  "github": {
-    "silent": true
-  }
+  "installCommand": "npm install",
+  "framework": "docusaurus-2"
 }
