@@ -125,54 +125,46 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Learning Chapters',
+          title: 'Docs',
           items: [
             {
-              label: 'ROS 2 Basics',
-              to: '/docs/module-1/chapter-1-ros2-nodes-topics',
-            },
-            {
-              label: 'Digital Twin',
-              to: '/docs/module-2/chapter-1-gazebo',
-            },
-            {
-              label: 'Perception & Navigation',
-              to: '/docs/module-3/chapter-1-ros2-introduction',
-            },
-            {
-              label: 'VLA Pipeline',
-              to: '/docs/module-4/chapter-1-whisper',
-            },
-          ],
-        },
-        {
-          title: 'Resources',
-          items: [
-            {
-              label: 'ROS 2 Documentation',
-              href: 'https://docs.ros.org/en/rolling/',
-            },
-            {
-              label: 'Gazebo Documentation',
-              href: 'https://gazebosim.org/docs',
-            },
-            {
-              label: 'Unity Robotics Hub',
-              href: 'https://github.com/Unity-Technologies/Unity-Robotics-Hub',
-            },
-          ],
-        },
-        {
-          title: 'Course Info',
-          items: [
-            {
-              label: 'Introduction',
+              label: 'Tutorial',
               to: '/docs/intro',
             },
           ],
         },
+        {
+          title: 'Community',
+          items: [
+            {
+              label: 'Stack Overflow',
+              href: 'https://stackoverflow.com/questions/tagged/ros2',
+            },
+            {
+              label: 'Discord',
+              href: 'https://discord.gg/robotics',
+            },
+            {
+              label: 'X',
+              href: 'https://x.com/ros',
+            },
+          ],
+        },
+        {
+          title: 'More',
+          items: [
+            {
+              label: 'Blog',
+              to: '/blog',
+            },
+            {
+              label: 'GitHub',
+              href: 'https://github.com/AliJamali06/physical-humanoid-robotic-ai-book',
+            },
+          ],
+        },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Humanoid Robotics AI Course. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,
