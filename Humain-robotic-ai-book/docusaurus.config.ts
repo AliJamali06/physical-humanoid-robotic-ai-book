@@ -102,7 +102,7 @@ const config: Config = {
             },
             {
               label: 'Perception & Navigation',
-              to: '/docs/module-3/chapter-1-ros2-introduction',
+              to: '/docs/module-3/chapter-1-isaac-sim',
             },
             {
               label: 'VLA Pipeline',

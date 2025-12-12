@@ -42,7 +42,7 @@ const FeatureList: FeatureItem[] = [
         and perception pipelines for humanoid robot spatial awareness.
       </>
     ),
-    link: '/docs/module-3/chapter-1-ros2-introduction',
+    link: '/docs/module-3/chapter-1-isaac-sim',
   },
   {
     title: 'Vision-Language-Action (VLA)',
