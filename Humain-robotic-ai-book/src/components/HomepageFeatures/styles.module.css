@@ -14,6 +14,16 @@
   transition: transform 0.3s ease;
 }
 
+.featureImage {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 /* Enhanced card container styling */
 .featureCard {
   background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
@@ -51,6 +61,11 @@
 
 .featureCard:hover .featureSvg {
   transform: scale(1.05);
+}
+
+.featureCard:hover .featureImage {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
 /* Dark mode card styling */
@@ -136,5 +151,9 @@
   .featureSvg {
     height: 150px;
     width: 150px;
+  }
+
+  .featureImage {
+    height: 180px;
   }
 }

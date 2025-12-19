@@ -5,7 +5,8 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
+  image?: string;
+  Svg?: React.ComponentType<React.ComponentProps<'svg'>>;
   description: ReactNode;
   link: string;
 };
@@ -13,7 +14,7 @@ type FeatureItem = {
 const FeatureList: FeatureItem[] = [
   {
     title: 'ROS 2 Robotic Nervous System',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    image: require('@site/static/img/card-1-ros2.jpg').default,
     description: (
       <>
         Learn ROS 2 fundamentals: nodes, topics, services, and URDF for
@@ -24,7 +25,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'Digital Twin (Gazebo & Unity)',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    image: require('@site/static/img/card-2-ai-native.png').default,
     description: (
       <>
         Master physics simulation with Gazebo, photorealistic rendering with Unity,
@@ -35,7 +36,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'Perception & Navigation',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    image: require('@site/static/img/card-3-ai-tech.jpg').default,
     description: (
       <>
         Explore visual SLAM with Isaac ROS, autonomous navigation with Nav2,
@@ -46,7 +47,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'Vision-Language-Action (VLA)',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    image: require('@site/static/img/card-4-vla.jpg').default,
     description: (
       <>
         Integrate Whisper for voice commands, LLM-based cognitive planning,
@@ -57,12 +58,16 @@ const FeatureList: FeatureItem[] = [
   },
 ];
 
-function Feature({title, Svg, description, link}: FeatureItem) {
+function Feature({title, image, Svg, description, link}: FeatureItem) {
   return (
     <div className={clsx('col col--6')}>
       <div className={styles.featureCard}>
         <div className="text--center">
-          <Svg className={styles.featureSvg} role="img" />
+          {image ? (
+            <img src={image} className={styles.featureImage} alt={title} />
+          ) : Svg ? (
+            <Svg className={styles.featureSvg} role="img" />
+          ) : null}
         </div>
         <div className="text--center">
           <Heading as="h3" className={styles.featureTitle}>{title}</Heading>

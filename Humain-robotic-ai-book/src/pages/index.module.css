@@ -4,15 +4,69 @@
  */
 
 .heroBanner {
-  padding: 4rem 0;
+  padding: 8rem 0;
   text-align: center;
   position: relative;
   overflow: hidden;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.5)),
+                    url('/img/hero-background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+}
+
+.heroBanner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(0, 102, 204, 0.2) 0%, rgba(0, 0, 0, 0.3) 100%);
+  z-index: 1;
+}
+
+.heroBanner .container {
+  position: relative;
+  z-index: 2;
+}
+
+.heroBanner .hero__title {
+  color: white;
+  font-size: 3.5rem;
+  font-weight: 800;
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+  margin-bottom: 1.5rem;
+}
+
+.heroBanner .hero__subtitle {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 1.5rem;
+  font-weight: 500;
+  text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.7);
+  margin-bottom: 2rem;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 @media screen and (max-width: 996px) {
   .heroBanner {
-    padding: 2rem;
+    padding: 4rem 2rem;
+    min-height: 400px;
+    background-attachment: scroll;
+  }
+
+  .heroBanner .hero__title {
+    font-size: 2.5rem;
+  }
+
+  .heroBanner .hero__subtitle {
+    font-size: 1.2rem;
   }
 }
 
@@ -20,4 +74,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 2rem;
+}
+
+.buttons .button {
+  font-size: 1.25rem;
+  padding: 1rem 2.5rem;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  border: 2px solid white;
+}
+
+.buttons .button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+.buttons .button--secondary {
+  background-color: rgba(255, 255, 255, 0.95);
+  color: var(--ifm-color-primary);
+}
+
+.buttons .button--secondary:hover {
+  background-color: white;
+  color: var(--ifm-color-primary-dark);
 }

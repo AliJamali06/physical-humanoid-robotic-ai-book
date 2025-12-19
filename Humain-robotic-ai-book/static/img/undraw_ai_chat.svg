@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 400">
+  <defs>
+    <style>
+      .cls-1{fill:#6c63ff;}
+      .cls-2{fill:#3f3d56;}
+      .cls-3{fill:#f2f2f2;}
+      .cls-4{fill:#e6e6e6;}
+    </style>
+  </defs>
+  
+  <!-- Background -->
+  <rect class="cls-3" width="500" height="400"/>
+  
+  <!-- Robot head -->
+  <rect class="cls-1" x="175" y="100" width="150" height="180" rx="20"/>
+  <circle class="cls-4" cx="220" cy="160" r="20"/>
+  <circle class="cls-4" cx="280" cy="160" r="20"/>
+  <circle class="cls-2" cx="220" cy="160" r="10"/>
+  <circle class="cls-2" cx="280" cy="160" r="10"/>
+  
+  <!-- Antenna -->
+  <line x1="250" y1="100" x2="250" y2="70" stroke="#3f3d56" stroke-width="3"/>
+  <circle class="cls-1" cx="250" cy="60" r="10"/>
+  
+  <!-- Mouth/speaker -->
+  <rect class="cls-2" x="200" y="220" width="100" height="40" rx="20"/>
+  <line x1="210" y1="230" x2="210" y2="250" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="230" y1="225" x2="230" y2="255" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="250" y1="220" x2="250" y2="260" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="270" y1="225" x2="270" y2="255" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="290" y1="230" x2="290" y2="250" stroke="#6c63ff" stroke-width="2"/>
+  
+  <!-- Chat bubbles -->
+  <rect class="cls-4" x="50" y="80" width="100" height="60" rx="10"/>
+  <polygon class="cls-4" points="130,120 150,130 130,140"/>
+  
+  <rect class="cls-4" x="350" y="220" width="100" height="60" rx="10"/>
+  <polygon class="cls-4" points="370,240 350,230 370,220"/>
+  
+  <!-- Neural network connections -->
+  <line x1="100" y1="300" x2="150" y2="320" stroke="#6c63ff" stroke-width="2" opacity="0.5"/>
+  <line x1="150" y1="300" x2="200" y2="320" stroke="#6c63ff" stroke-width="2" opacity="0.5"/>
+  <line x1="200" y1="300" x2="250" y2="320" stroke="#6c63ff" stroke-width="2" opacity="0.5"/>
+  <line x1="250" y1="300" x2="300" y2="320" stroke="#6c63ff" stroke-width="2" opacity="0.5"/>
+  
+  <circle class="cls-1" cx="100" cy="300" r="8"/>
+  <circle class="cls-1" cx="150" cy="300" r="8"/>
+  <circle class="cls-1" cx="200" cy="300" r="8"/>
+  <circle class="cls-1" cx="250" cy="300" r="8"/>
+  <circle class="cls-1" cx="300" cy="300" r="8"/>
+</svg>

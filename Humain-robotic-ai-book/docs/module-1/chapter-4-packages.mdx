@@ -1,0 +1,239 @@
+---
+title: "Building ROS 2 Packages with Python and rclpy"
+sidebar_position: 4
+description: Learn to create, build, and manage ROS 2 packages using Python and rclpy for modular robot software development
+keywords: [ros2, packages, rclpy, python, colcon, workspace, robot software]
+---
+
+# Building ROS 2 Packages with Python and rclpy
+
+## Learning Objectives
+
+By the end of this chapter, you will be able to:
+
+- **Create** a ROS 2 workspace and package structure
+- **Build** Python packages using colcon build system
+- **Organize** robot code using ROS 2 package conventions
+- **Configure** package dependencies in package.xml and setup.py
+- **Install** and source packages for use in your robot system
+
+**Estimated Time**: 75-90 minutes
+
+---
+
+## What is a ROS 2 Package?
+
+A **ROS 2 package** is a directory containing robot software that can be built and shared. Think of it as a Python module designed specifically for robotics.
+
+### Package Structure
+
+```
+my_robot_pkg/
+├── package.xml          # Package metadata and dependencies
+├── setup.py             # Python package configuration
+├── setup.cfg            # Install configuration
+├── resource/            # Package marker files
+├── my_robot_pkg/        # Python module directory
+│   ├── __init__.py
+│   ├── node1.py        # Your ROS 2 nodes
+│   └── node2.py
+└── test/                # Unit tests
+```
+
+---
+
+## Creating Your First Package
+
+### Step 1: Create Workspace
+
+```bash
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws/src
+```
+
+### Step 2: Create Package
+
+```bash
+ros2 pkg create --build-type ament_python humanoid_control \
+  --dependencies rclpy std_msgs geometry_msgs
+```
+
+### Step 3: Add a Node
+
+Create `humanoid_control/humanoid_control/joint_publisher.py`:
+
+```python
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class JointPublisher(Node):
+    def __init__(self):
+        super().__init__('joint_publisher')
+        self.publisher = self.create_publisher(String, '/joint_states', 10)
+        self.timer = self.create_timer(1.0, self.publish_state)
+        self.counter = 0
+
+    def publish_state(self):
+        msg = String()
+        msg.data = f'Joint state #{self.counter}'
+        self.publisher.publish(msg)
+        self.get_logger().info(f'Publishing: {msg.data}')
+        self.counter += 1
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = JointPublisher()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Step 4: Register Node in setup.py
+
+```python
+entry_points={
+    'console_scripts': [
+        'joint_publisher = humanoid_control.joint_publisher:main',
+    ],
+},
+```
+
+---
+
+## Building and Running
+
+```bash
+# Build
+cd ~/ros2_ws
+colcon build --packages-select humanoid_control
+
+# Source
+source ~/ros2_ws/install/setup.bash
+
+# Run
+ros2 run humanoid_control joint_publisher
+```
+
+---
+
+## Package Configuration Files
+
+### package.xml
+
+```xml
+<?xml version="1.0"?>
+<package format="3">
+  <name>humanoid_control</name>
+  <version>0.0.1</version>
+  <description>Humanoid robot control</description>
+  <maintainer email="you@email.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
+```
+
+### setup.py
+
+```python
+from setuptools import setup
+
+package_name = 'humanoid_control'
+
+setup(
+    name=package_name,
+    version='0.0.1',
+    packages=[package_name],
+    install_requires=['setuptools'],
+    entry_points={
+        'console_scripts': [
+            'joint_publisher = humanoid_control.joint_publisher:main',
+        ],
+    },
+)
+```
+
+---
+
+## Development Workflow
+
+1. **Edit** code in `src/your_pkg/your_pkg/`
+2. **Build**: `colcon build --packages-select your_pkg`
+3. **Source**: `source install/setup.bash`
+4. **Run**: `ros2 run your_pkg node_name`
+5. **Repeat**
+
+### Quick Tips
+
+```bash
+# Build with symlink (no rebuild for Python changes)
+colcon build --symlink-install
+
+# Build specific package
+colcon build --packages-select pkg_name
+
+# Clean rebuild
+rm -rf build/ install/ log/
+colcon build
+```
+
+---
+
+## Best Practices
+
+### Naming Conventions
+- ✅ `humanoid_navigation`, `arm_control`
+- ❌ `MyPackage`, `test123`
+
+### Package Organization
+```
+pkg_name/
+├── pkg_name/
+│   ├── nodes/        # Node files
+│   ├── utils/        # Helper functions
+│   └── config/       # Configuration
+```
+
+### Add to ~/.bashrc
+```bash
+echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
+```
+
+---
+
+## Hands-On Exercise
+
+**Create a Two-Node Communication System**
+
+1. Create package `humanoid_comms`
+2. Create `talker.py` (publishes messages)
+3. Create `listener.py` (subscribes)
+4. Build and test both nodes
+
+---
+
+## Summary
+
+✅ Created ROS 2 workspace and packages
+✅ Built packages with colcon
+✅ Registered nodes as entry points
+✅ Learned the build-source-run workflow
+
+**Next**: URDF for Humanoid Robots
+
+---
+
+## Resources
+
+- [ROS 2 Package Tutorial](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Creating-Your-First-ROS2-Package.html)
+- [Colcon Documentation](https://colcon.readthedocs.io/)

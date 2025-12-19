@@ -125,17 +125,54 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Docs',
+          title: 'Learning',
           items: [
             {
-              label: 'Tutorial',
+              label: 'Introduction',
               to: '/docs/intro',
+            },
+            {
+              label: 'Learning Outcomes',
+              to: '/docs/learning-outcomes',
+            },
+            {
+              label: 'ROS 2 Basics',
+              to: '/docs/module-1/chapter-1-ros2-nodes-topics',
+            },
+            {
+              label: 'Digital Twin',
+              to: '/docs/module-2/chapter-1-gazebo',
+            },
+          ],
+        },
+        {
+          title: 'Advanced Topics',
+          items: [
+            {
+              label: 'NVIDIA Isaac',
+              to: '/docs/module-3/chapter-1-isaac-sim',
+            },
+            {
+              label: 'Vision-Language-Action',
+              to: '/docs/module-4/chapter-1-whisper',
+            },
+            {
+              label: 'Navigation & SLAM',
+              to: '/docs/module-3/chapter-3-nav2',
+            },
+            {
+              label: 'Capstone Project',
+              to: '/docs/module-4/chapter-3-vla-capstone',
             },
           ],
         },
         {
           title: 'Community',
           items: [
+            {
+              label: 'ROS Discourse',
+              href: 'https://discourse.ros.org/',
+            },
             {
               label: 'Stack Overflow',
               href: 'https://stackoverflow.com/questions/tagged/ros2',
@@ -145,26 +182,44 @@ const config: Config = {
               href: 'https://discord.gg/robotics',
             },
             {
-              label: 'X',
+              label: 'X (Twitter)',
               href: 'https://x.com/ros',
             },
           ],
         },
         {
-          title: 'More',
+          title: 'Resources',
           items: [
-            {
-              label: 'Blog',
-              to: '/blog',
-            },
             {
               label: 'GitHub',
               href: 'https://github.com/AliJamali06/physical-humanoid-robotic-ai-book',
             },
+            {
+              label: 'ROS 2 Documentation',
+              href: 'https://docs.ros.org/en/humble/',
+            },
+            {
+              label: 'NVIDIA Isaac',
+              href: 'https://developer.nvidia.com/isaac',
+            },
+            {
+              label: 'Gazebo',
+              href: 'https://gazebosim.org/',
+            },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+      copyright: `
+        <div style="margin-top: 1rem;">
+          <strong>Humanoid Robotics AI</strong> - Physical AI & Robotics Education
+        </div>
+        <div style="margin-top: 0.5rem; font-size: 0.85rem;">
+          Copyright © ${new Date().getFullYear()} All Rights Reserved. Built with Docusaurus.
+        </div>
+        <div style="margin-top: 0.75rem; font-size: 0.8rem; opacity: 0.7;">
+          Learn ROS 2, Digital Twins, NVIDIA Isaac, and Vision-Language-Action systems
+        </div>
+      `,
     },
     prism: {
       theme: prismThemes.github,
