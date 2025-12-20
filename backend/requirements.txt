@@ -1,0 +1,11 @@
+# Backend dependencies for RAG Chatbot
+# Only 2 external APIs needed: Cohere + Qdrant (both FREE!)
+fastapi
+uvicorn
+pydantic
+python-dotenv
+cohere>=5.11.0  # For embeddings + chat (command-r-plus)
+qdrant-client>=1.12.0  # Vector database
+python-multipart
+tqdm
+requests
